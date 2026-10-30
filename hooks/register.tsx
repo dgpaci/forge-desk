@@ -1,8 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
+import { ACTION_LABEL, runAction } from './actions'
+import type { Action } from './actions'
 import { applyFilter, getActiveView, getAge, getStatusCounts, STATUS_ORDER, toggle, VIEWS } from './filter'
 import type { ViewName } from './filter'
+import { itemKey } from './model'
 import type { Forge, Role, Status } from './model'
 import { refresh } from './refresh'
 
@@ -145,7 +148,7 @@ export const register: Register = on => {
         </Text>
         <Box flexDirection="column" gap={1}>
           {shown.slice(0, MAX_ROWS).map(item => (
-            <Box key={`${item.forge}:${item.url}`} flexDirection="column">
+            <Box key={itemKey(item)} flexDirection="column">
               <Box flexDirection="row" columnGap={1}>
                 <Text color={STATUS_COLOR[item.status]} mono>{item.status.padEnd(12)}</Text>
                 <Link href={item.url}>{item.title}</Link>
@@ -153,6 +156,13 @@ export const register: Register = on => {
               <Text dimColor wrap="truncate-end">
                 {`${FORGE_LABEL[item.forge]} ${item.repo}#${item.number} · ${item.kind} · ${getAge(item.updatedAt, now)} · ${item.assignees.join(', ') || 'unassigned'}`}
               </Text>
+              <Box flexDirection="row" columnGap={2}>
+                {(Object.keys(ACTION_LABEL) as Action[]).map(action => (
+                  <Button key={`${action}:${itemKey(item)}`} plain onPress={() => void runAction($, action, item)}>
+                    {ACTION_LABEL[action]}
+                  </Button>
+                ))}
+              </Box>
             </Box>
           ))}
         </Box>
