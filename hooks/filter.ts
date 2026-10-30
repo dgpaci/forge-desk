@@ -42,6 +42,21 @@ export function getStatusCounts(items: Item[], filter: Filter): Record<Status, n
   return counts
 }
 
+const sameSet = <T>(a: T[], b: T[]): boolean => a.length === b.length && a.every(one => b.includes(one))
+
+/** The view `filter` is exactly, if any: the pane marks its button. */
+export function getActiveView(filter: Filter): ViewName | undefined {
+  return (Object.keys(VIEWS) as ViewName[]).find(name => {
+    const view = VIEWS[name]
+    return (
+      sameSet(view.roles, filter.roles) &&
+      sameSet(view.statuses, filter.statuses) &&
+      sameSet(view.forges, filter.forges) &&
+      view.text === filter.text.trim()
+    )
+  })
+}
+
 /** Adds `value` to `list` when missing, removes it when present. */
 export const toggle = <T>(list: T[], value: T): T[] =>
   list.includes(value) ? list.filter(one => one !== value) : [...list, value]

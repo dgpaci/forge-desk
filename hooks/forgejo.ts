@@ -35,9 +35,10 @@ export type Flags = { hasCommits: boolean; hasLinkedPr: boolean }
 // Timeline flags per item key, valid while the item's updated_at is unchanged.
 export type TimelineCache = Record<string, Flags & { updatedAt: string }>
 
-export const flagsOf = (events: TimelineEvent[]): Flags => ({
-  hasCommits: events.some(event => event.type === 'commit_ref'),
-  hasLinkedPr: events.some(event => event.type === 'pull_ref'),
+// Forgejo answers `null`, not `[]`, for an issue with no timeline events.
+export const flagsOf = (events: TimelineEvent[] | null): Flags => ({
+  hasCommits: (events ?? []).some(event => event.type === 'commit_ref'),
+  hasLinkedPr: (events ?? []).some(event => event.type === 'pull_ref'),
 })
 
 function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
@@ -152,10 +153,10 @@ export async function fetchForgejo(
         stale.slice(at, at + PARALLEL).map(async ([key, issue]) => {
           try {
             const path = `/repos/${issue.repository.full_name}/issues/${issue.number}/timeline?limit=100`
-            const events = await getJson<TimelineEvent[]>($, token, path)
+            const events = await getJson<TimelineEvent[] | null>($, token, path)
             kept[key] = { ...flagsOf(events), updatedAt: issue.updated_at }
           } catch (error) {
-            errors.push(String(error))
+            errors.push(`${issue.repository.full_name}#${issue.number}: ${String(error)}`)
           }
         }),
       )

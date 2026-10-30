@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import { applyFilter, getAge, getStatusCounts, STATUS_ORDER, toggle, VIEWS } from './filter'
+import { applyFilter, getActiveView, getAge, getStatusCounts, STATUS_ORDER, toggle, VIEWS } from './filter'
 import type { ViewName } from './filter'
 import type { Forge, Role, Status } from './model'
 import { refresh } from './refresh'
@@ -71,17 +71,22 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const shown = applyFilter(all, chosen)
     const counts = getStatusCounts(all, chosen)
+    const active = getActiveView(chosen)
     const setFilter = (change: Partial<typeof chosen>) => void update($, filter, now => ({ ...now, ...change }))
 
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
           {(Object.keys(VIEWS) as ViewName[]).map(view => (
-            <Button key={`view-${view}`} variant="secondary" onPress={() => setFilter(VIEWS[view])}>
+            <Button
+              key={`view-${view}`}
+              variant={view === active ? 'primary' : 'secondary'}
+              onPress={() => setFilter(VIEWS[view])}
+            >
               {VIEW_LABEL[view]}
             </Button>
           ))}
-          <Button key="refresh" variant="primary" onPress={() => void reload($)}>
+          <Button key="refresh" variant="secondary" onPress={() => void reload($)}>
             {state.isLoading ? 'Refreshing…' : 'Refresh'}
           </Button>
         </Box>

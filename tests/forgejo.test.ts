@@ -34,7 +34,7 @@ test('assigned issues with a linked PR and draft review requests drop out', asyn
 // the /forge-desk command runs a full refresh.
 const CACHE_KEY = 'forgejo-timeline-1'
 
-test('timelines are read only for issues whose update changed', async ($, on) => {
+test('timelines are read only for issues whose update changed, an empty one included', async ($, on) => {
   const timelines: string[] = []
   mock.store(on, {
     [CACHE_KEY]: { [key(1)]: { hasCommits: false, hasLinkedPr: false, updatedAt: issue(1).updated_at } },
@@ -47,10 +47,12 @@ test('timelines are read only for issues whose update changed', async ($, on) =>
     const reply = (body: unknown) => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } })
     expect(e.init?.headers).toMatchObject({ Authorization: 'token secret' })
     if (e.url.endsWith('/user')) return reply({ login: 'me' })
-    if (e.url.includes('type=issues&assigned=true')) return reply([issue(1), issue(2, { updated_at: '2026-10-30T10:00:00Z' })])
+    if (e.url.includes('type=issues&assigned=true')) {
+      return reply([issue(1), issue(2, { updated_at: '2026-10-30T10:00:00Z' }), issue(3, { updated_at: '2026-10-01T10:00:00Z' })])
+    }
     if (e.url.includes('/timeline')) {
       timelines.push(e.url)
-      return reply([{ type: 'commit_ref' }])
+      return reply(e.url.includes('/issues/3/') ? null : [{ type: 'commit_ref' }])
     }
     return reply([])
   })
@@ -63,6 +65,9 @@ test('timelines are read only for issues whose update changed', async ($, on) =>
     presentation: { isFullscreen: false, columns: 80 },
   })
 
-  expect(timelines).toEqual(['https://hub.genro.com/api/v1/repos/acme/app/issues/2/timeline?limit=100'])
-  expect(text).toBe('2 open issues and PRs.\ngithub: gh: not logged in')
+  expect(timelines.sort()).toEqual([
+    'https://hub.genro.com/api/v1/repos/acme/app/issues/2/timeline?limit=100',
+    'https://hub.genro.com/api/v1/repos/acme/app/issues/3/timeline?limit=100',
+  ])
+  expect(text).toBe('3 open issues and PRs.\ngithub: gh: not logged in')
 })

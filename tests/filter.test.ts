@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { applyFilter, getAge, getStatusCounts, toggle, VIEWS } from '../hooks/filter'
+import { applyFilter, getActiveView, getAge, getStatusCounts, toggle, VIEWS } from '../hooks/filter'
 import type { Item } from '../hooks/model'
 
 const item = (number: number, change: Partial<Item>): Item => ({
@@ -46,4 +46,11 @@ test('toggle and age', async () => {
   const now = Date.parse('2026-10-30T12:00:00Z')
   expect([getAge('2026-10-30T11:48:00Z', now), getAge('2026-10-30T07:00:00Z', now), getAge('2026-10-27T12:00:00Z', now)])
     .toEqual(['12m', '5h', '3d'])
+})
+
+test('the active view is the one the filter equals', async () => {
+  expect(getActiveView(VIEWS.focus)).toBe('focus')
+  expect(getActiveView({ ...VIEWS.focus, statuses: [...VIEWS.focus.statuses].reverse() })).toBe('focus')
+  expect(getActiveView({ ...VIEWS.focus, text: 'x' })).toBeUndefined()
+  expect(getActiveView(VIEWS.all)).toBe('all')
 })
