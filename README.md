@@ -24,7 +24,11 @@ Status: under development.
 
 The repository root is the plugin. Data layer: `hooks/github.ts` (one `gh api graphql` call, one
 search per clause), `hooks/forgejo.ts` (REST, one search per clause plus one cached timeline call
-per issue), `hooks/status.ts` (status precedence).
+per issue), `hooks/status.ts` (status precedence). Pane: `hooks/register.tsx`, filters and views in
+`hooks/filter.ts` (Focus, the default: assigned to me and review requests, without `tobeassigned`).
+
+To load it in every session, name the repository in the `env` block of `~/.claude/settings.json`:
+`"CLAUDE_CODE_PLUGIN_DIRS": "<path to this repo>"`. `/forge-desk` opens the pane.
 
 ```bash
 claude plugin validate .

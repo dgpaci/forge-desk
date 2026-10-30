@@ -54,9 +54,7 @@ test('timelines are read only for issues whose update changed', async ($, on) =>
     }
     return reply([])
   })
-  on('command.register', () => ({ value: { command: 'forge-desk' } }))
-  on('session.start', (_, e) => ({ cwd: e.cwd }))
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
 
   const { text } = await $.command.run({
     command: 'forge-desk',
@@ -66,9 +64,5 @@ test('timelines are read only for issues whose update changed', async ($, on) =>
   })
 
   expect(timelines).toEqual(['https://hub.genro.com/api/v1/repos/acme/app/issues/2/timeline?limit=100'])
-  expect(text).toBe(
-    'github: 0 (blocked 0, waiting 0, inprogress 0, todo 0, tobeassigned 0)\n' +
-      'forgejo: 2 (blocked 0, waiting 0, inprogress 1, todo 1, tobeassigned 0)\n' +
-      'github: gh: not logged in',
-  )
+  expect(text).toBe('2 open issues and PRs.\ngithub: gh: not logged in')
 })

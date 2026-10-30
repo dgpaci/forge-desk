@@ -10,7 +10,7 @@ const OLD = '2026-10-20T12:00:00Z'
 const base: RawItem = {
   forge: 'github', repo: 'acme/app', number: 1, kind: 'issue', title: 't', url: 'u',
   updatedAt: FRESH, author: 'me', assignees: ['me'], isDraft: false, isApproved: false,
-  hasCommits: false, hasLinkedPr: false,
+  hasCommits: false, hasLinkedPr: false, roles: ['assignee'],
 }
 
 const CASES: [string, Partial<RawItem>, string][] = [

@@ -1,16 +1,17 @@
 import type { EngineInterface } from 'claude-code'
 
-import type { RawItem } from './model'
+import { addMatch, CLAUSE_ROLE } from './model'
+import type { Clause, RawItem } from './model'
 
 // One search per clause of the selection, merged client-side: the plain
 // search syntax is sure to work in GraphQL, the boolean one is not.
-export const SEARCHES = {
+export const SEARCHES: Record<Clause, string> = {
   assigned: 'is:open is:issue assignee:@me -linked:pr',
   created: 'is:open is:issue author:@me',
   prAssigned: 'is:open is:pr assignee:@me',
   prCreated: 'is:open is:pr author:@me',
   reviews: 'is:open is:pr review-requested:@me draft:false',
-} as const
+}
 
 const NODE = `nodes { __typename
   ... on Issue { number title url updatedAt repository { nameWithOwner } author { login }
@@ -59,7 +60,7 @@ const isLinkingPr = (event: TimelineNode): boolean =>
     event.source?.__typename === 'PullRequest' &&
     event.willCloseTarget === true)
 
-function toItem(node: Node): RawItem {
+function toItem(node: Node, clause: Clause): RawItem {
   const timeline = node.timelineItems?.nodes ?? []
 
   return {
@@ -76,6 +77,7 @@ function toItem(node: Node): RawItem {
     isApproved: node.reviewDecision === 'APPROVED',
     hasCommits: timeline.some(event => Boolean(event.commit)),
     hasLinkedPr: timeline.some(isLinkingPr),
+    roles: [CLAUSE_ROLE[clause]],
   }
 }
 
@@ -86,7 +88,7 @@ export function parseGithub(response: GithubResponse): SourceResult {
   if (!data) return { me: '', items: [], errors: errors.length ? errors : ['no data'] }
 
   const byUrl = new Map<string, RawItem>()
-  for (const alias of Object.keys(SEARCHES)) {
+  for (const alias of Object.keys(SEARCHES) as Clause[]) {
     const search = data[alias] as Search | undefined
     if (!search) continue
     if (search.issueCount > search.nodes.length) {
@@ -94,7 +96,7 @@ export function parseGithub(response: GithubResponse): SourceResult {
     }
     for (const node of search.nodes) {
       if (node?.__typename === 'Issue' || node?.__typename === 'PullRequest') {
-        byUrl.set(node.url, toItem(node))
+        addMatch(byUrl, node.url, toItem(node, alias))
       }
     }
   }

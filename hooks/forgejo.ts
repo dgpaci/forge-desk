@@ -1,8 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { SourceResult } from './github'
-import { itemKey } from './model'
-import type { RawItem } from './model'
+import { addMatch, CLAUSE_ROLE, itemKey } from './model'
+import type { Clause, RawItem } from './model'
 
 export const HOST = 'hub.genro.com'
 const API = `https://${HOST}/api/v1`
@@ -12,14 +12,13 @@ const MAX_PAGES = 10
 const PARALLEL = 6
 
 // The Forgejo search has no boolean query: one call per clause.
-export const SEARCHES = {
+export const SEARCHES: Record<Clause, string> = {
   assigned: 'type=issues&assigned=true',
   created: 'type=issues&created=true',
   prAssigned: 'type=pulls&assigned=true',
   prCreated: 'type=pulls&created=true',
   reviews: 'type=pulls&review_requested=true',
-} as const
-export type Clause = keyof typeof SEARCHES
+}
 
 export type ForgejoIssue = {
   number: number
@@ -41,7 +40,7 @@ export const flagsOf = (events: TimelineEvent[]): Flags => ({
   hasLinkedPr: events.some(event => event.type === 'pull_ref'),
 })
 
-function toItem(issue: ForgejoIssue): RawItem {
+function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
   return {
     forge: 'forgejo',
     repo: issue.repository.full_name,
@@ -56,6 +55,7 @@ function toItem(issue: ForgejoIssue): RawItem {
     isApproved: false,
     hasCommits: false,
     hasLinkedPr: false,
+    roles: [CLAUSE_ROLE[clause]],
   }
 }
 
@@ -71,12 +71,12 @@ export function mergeForgejo(
   const byKey = new Map<string, RawItem>()
   for (const clause of Object.keys(SEARCHES) as Clause[]) {
     for (const issue of lists[clause] ?? []) {
-      const item = toItem(issue)
+      const item = toItem(issue, clause)
       const key = itemKey(item)
       const found = { ...item, ...(item.kind === 'issue' ? flags[key] : {}) }
       if (clause === 'assigned' && found.hasLinkedPr) continue
       if (clause === 'reviews' && found.isDraft) continue
-      byKey.set(key, found)
+      addMatch(byKey, key, found)
     }
   }
 
