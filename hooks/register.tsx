@@ -37,9 +37,11 @@ type SavedList = { savedAt: number; items: Item[] }
 // The automatic refresh; a reload of the module starts a new one.
 let timer: Timer | undefined
 
-/** Refreshes the list unless a refresh is already running. */
+/** Refreshes the list; while a refresh is already running, reports the list as it stands. */
 async function reload($: EngineInterface): Promise<{ count: number; errors: string[] }> {
-  if ((await read($, meta)).isLoading) return { count: 0, errors: ['a refresh is already running'] }
+  if ((await read($, meta)).isLoading) {
+    return { count: (await read($, items)).length, errors: ['a refresh is running: the pane updates when it ends'] }
+  }
   await update($, meta, now => ({ ...now, isLoading: true }))
   try {
     const found = await refresh($)

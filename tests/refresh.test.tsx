@@ -37,3 +37,29 @@ test('offline, the pane keeps the saved list and retries every 5 minutes', async
   expect(ghCalls).toBe(before + 1)
   await ui.unmount()
 })
+
+test('a command run during a refresh reports the list as it stands', async ($, on) => {
+  let release = () => {}
+  const offline = new Promise<void>(resolve => { release = resolve })
+  mock.store(on, { 'items-cache-1': { savedAt: 0, items: [item('github', 1), item('forgejo', 2)] } })
+  const clock = mock.clock(on)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('command.register', () => ({ value: { command: 'forge-desk' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('process.run', async () => {
+    await offline
+    return { value: { exitCode: 1, stdout: '', stderr: 'offline', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('env.get', () => ({ value: '/h' }))
+  on('fs.read', () => ({ value: JSON.stringify({ hosts: {} }) }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const { text } = await $.command.run({
+    command: 'forge-desk', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 },
+  })
+  release()
+  // Let the session-start refresh end before the test does.
+  await clock.advance(1000)
+
+  expect(text).toBe('2 open issues and PRs.\na refresh is running: the pane updates when it ends')
+})
