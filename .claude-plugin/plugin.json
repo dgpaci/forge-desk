@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "description": "Side pane listing your open issues and PRs across GitHub and Forgejo, with a computed status",
   "author": { "name": "Davide Paci" },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "types": "./types/index.d.ts"
 }
