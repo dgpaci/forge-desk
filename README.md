@@ -19,3 +19,17 @@ Actions per row: **work on it** (starts a session in the local checkout), **get 
 (read-only summary), **nudge** (drafts a comment, posts only after your OK).
 
 Status: under development.
+
+## Development
+
+The repository root is the plugin. Data layer: `hooks/github.ts` (one `gh api graphql` call, one
+search per clause), `hooks/forgejo.ts` (REST, one search per clause plus one cached timeline call
+per issue), `hooks/status.ts` (status precedence).
+
+```bash
+claude plugin validate .
+```
+
+```bash
+claude plugin test .
+```
