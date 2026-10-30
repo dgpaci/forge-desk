@@ -15,8 +15,12 @@ Statuses:
 | `waiting` | PR awaiting review |
 | `blocked` | waiting, or assigned to someone else, with no update for 7+ days |
 
-Actions per row: **work on it** (starts a session in the local checkout), **get an update**
-(read-only summary), **nudge** (drafts a comment, posts only after your OK).
+Actions per row, each a request to Claude:
+- **Solve** on issues, **Review** on other people's PRs, **Work on it** on your own PRs: a child
+  session in the local checkout (found by scanning git remotes under `~/sviluppo`); Review posts
+  nothing without your OK;
+- **Get an update**: a read-only summary;
+- **Nudge**: drafts a comment, posts only after your OK.
 
 Status: under development.
 

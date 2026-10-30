@@ -1,8 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import { ACTION_LABEL, runAction } from './actions'
-import type { Action } from './actions'
+import { ACTION_LABEL, getActions, runAction } from './actions'
 import { applyFilter, getActiveView, getAge, getStatusCounts, STATUS_ORDER, toggle, VIEWS } from './filter'
 import type { ViewName } from './filter'
 import { itemKey } from './model'
@@ -177,7 +176,7 @@ export const register: Register = on => {
                 {`${FORGE_LABEL[item.forge]} ${item.repo}#${item.number} · ${item.kind} · ${getAge(item.updatedAt, now)} · ${item.assignees.join(', ') || 'unassigned'}`}
               </Text>
               <Box flexDirection="row" columnGap={2}>
-                {(Object.keys(ACTION_LABEL) as Action[]).map(action => (
+                {getActions(item).map(action => (
                   <Button key={`${action}:${itemKey(item)}`} plain onPress={() => void runAction($, action, item)}>
                     {ACTION_LABEL[action]}
                   </Button>

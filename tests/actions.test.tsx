@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { buildPrompt } from '../hooks/actions'
+import { buildPrompt, getActions } from '../hooks/actions'
 import type { ForgejoIssue } from '../hooks/forgejo'
 import type { Item } from '../hooks/model'
 
@@ -10,11 +10,21 @@ const ITEM: Item = {
   hasCommits: false, hasLinkedPr: false, roles: ['author'], status: 'blocked',
 }
 
-test('work on it starts a child session in the checkout, or asks to clone', async () => {
-  const work = buildPrompt('work', ITEM, '/h/sviluppo/acme/app')
-  expect(work).toContain('cwd "/h/sviluppo/acme/app"')
-  expect(work).toContain('assignment check')
-  expect(buildPrompt('work', ITEM)).toContain('No local checkout of acme/app')
+test('issues offer Solve, others\' PRs Review, my PRs Work on it', async () => {
+  expect(getActions(ITEM)).toEqual(['solve', 'update', 'nudge'])
+  expect(getActions({ ...ITEM, kind: 'pr', roles: ['reviewer'] })[0]).toBe('review')
+  expect(getActions({ ...ITEM, kind: 'pr', roles: ['author', 'assignee'] })[0]).toBe('work')
+})
+
+test('the session actions start a child session in the checkout, or ask to clone', async () => {
+  const solve = buildPrompt('solve', ITEM, '/h/sviluppo/acme/app')
+  expect(solve).toContain('cwd "/h/sviluppo/acme/app"')
+  expect(solve).toContain('resolve issue https://hub.genro.com/acme/app/issues/7')
+  expect(solve).toContain('assignment check')
+  const review = buildPrompt('review', { ...ITEM, kind: 'pr' }, '/h/sviluppo/acme/app')
+  expect(review).toContain('code-review skill')
+  expect(review).toContain('no review comment without my explicit OK')
+  expect(buildPrompt('solve', ITEM)).toContain('No local checkout of acme/app')
 })
 
 test('an update is read only and a nudge waits for my OK', async () => {
@@ -25,7 +35,7 @@ test('an update is read only and a nudge waits for my OK', async () => {
   expect(buildPrompt('nudge', { ...ITEM, kind: 'pr', status: 'waiting' })).toContain('the requested reviewers')
 })
 
-test('pressing Work on it sends the prompt with the checkout found on disk', async ($, on) => {
+test('pressing Solve sends the prompt with the checkout found on disk', async ($, on) => {
   const prompts: string[] = []
   const issue: ForgejoIssue = {
     number: 7, title: 'Fix it', html_url: ITEM.url, updated_at: ITEM.updatedAt, user: { login: 'me' },
@@ -64,7 +74,7 @@ test('pressing Work on it sends the prompt with the checkout found on disk', asy
     plugin: 'forge-desk', component: 'Pane', requestId: 'forge-desk', surface: 'desktop',
     props: { title: 'Forge desk', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
   })
-  await ui.press({ key: 'work:forgejo:acme/app#7' })
+  await ui.press({ key: 'solve:forgejo:acme/app#7' })
 
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toContain('cwd "/h/sviluppo/acme/app"')
