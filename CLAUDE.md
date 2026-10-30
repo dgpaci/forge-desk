@@ -19,7 +19,7 @@ commit messages are English as everywhere. Conversations with the user stay in I
 
 ## Forge
 
-GitHub, private repo `dgpaci/forge-desk`, CLI `gh`. Not a Softwell repo: Claude attribution in
+GitHub, public repo `dgpaci/forge-desk` (MIT), CLI `gh`. Not a Softwell repo: Claude attribution in
 commits and PRs is allowed.
 
 The mod itself talks to two forges:
