@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 
 import { buildPrompt, getActions } from '../hooks/actions'
 import type { ForgejoIssue } from '../hooks/forgejo'
@@ -35,8 +36,8 @@ test('an update is read only and a nudge waits for my OK', async () => {
   expect(buildPrompt('nudge', { ...ITEM, kind: 'pr', status: 'waiting' })).toContain('the requested reviewers')
 })
 
-test('pressing Solve sends the prompt with the checkout found on disk', async ($, on) => {
-  const prompts: string[] = []
+// A Forgejo issue acme/app#7 with its checkout on disk, the pane open on it.
+async function pressSolve(...[$, on]: Parameters<TestBody>) {
   const issue: ForgejoIssue = {
     number: 7, title: 'Fix it', html_url: ITEM.url, updated_at: ITEM.updatedAt, user: { login: 'me' },
     assignees: [{ login: 'me' }], repository: { full_name: 'acme/app' }, pull_request: null,
@@ -62,10 +63,6 @@ test('pressing Solve sends the prompt with the checkout found on disk', async ($
     if (e.url.includes('type=issues&assigned=true')) return reply([issue])
     return reply(e.url.includes('/timeline') ? [] : [])
   })
-  on('prompt.submit', (_, e) => {
-    prompts.push(e.text)
-    return { text: e.text }
-  })
 
   await $.command.run({
     command: 'forge-desk', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 },
@@ -75,8 +72,43 @@ test('pressing Solve sends the prompt with the checkout found on disk', async ($
     props: { title: 'Forge desk', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
   })
   await ui.press({ key: 'solve:forgejo:acme/app#7' })
+  await ui.unmount()
+}
+
+test('pressing Solve opens a new session in the checkout, sending nothing here', async ($, on) => {
+  const prompts: string[] = []
+  const calls: { server: string; tool: string; args: Record<string, unknown> }[] = []
+  on('prompt.submit', (_, e) => {
+    prompts.push(e.text)
+    return { text: e.text }
+  })
+  on('mcp.call', (_, e) => {
+    calls.push(e)
+    return { value: { content: [{ type: 'text', text: 'started' }], isError: false } }
+  })
+
+  await pressSolve($, on)
+
+  expect(prompts).toEqual([])
+  expect(calls).toHaveLength(1)
+  expect(calls[0].server).toBe('ccd_session')
+  expect(calls[0].tool).toBe('start_session')
+  expect(calls[0].args.cwd).toBe('/h/sviluppo/acme/app')
+  expect(calls[0].args.initiation).toBe('user_asked')
+  expect(String(calls[0].args.prompt)).toContain('resolve issue https://hub.genro.com/acme/app/issues/7')
+  expect(String(calls[0].args.background)).toContain('follow its CLAUDE.md')
+})
+
+test('without the Desktop app, pressing Solve asks Claude here instead', async ($, on) => {
+  const prompts: string[] = []
+  on('prompt.submit', (_, e) => {
+    prompts.push(e.text)
+    return { text: e.text }
+  })
+  on('mcp.call', () => ({ value: { content: [{ type: 'text', text: 'no such server' }], isError: true } }))
+
+  await pressSolve($, on)
 
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toContain('cwd "/h/sviluppo/acme/app"')
-  await ui.unmount()
 })

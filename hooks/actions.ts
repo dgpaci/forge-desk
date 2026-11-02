@@ -13,8 +13,16 @@ export const ACTION_LABEL: Record<Action, string> = {
   nudge: 'Nudge',
 }
 
+type SessionAction = 'solve' | 'review' | 'work'
+
+const isSessionAction = (action: Action): action is SessionAction =>
+  action === 'solve' || action === 'review' || action === 'work'
+
+// The Desktop app's MCP server that starts sessions.
+const SESSION_SERVER = 'ccd_session'
+
 // What the child session started in the local checkout is asked to do.
-const SESSION_TASK: Record<'solve' | 'review' | 'work', (item: Item) => string> = {
+const SESSION_TASK: Record<SessionAction, (item: Item) => string> = {
   solve: item =>
     `resolve issue ${item.url}, beginning with the assignment check of my workflow rules`,
   review: item =>
@@ -40,7 +48,7 @@ const describe = (item: Item, action: Action): string =>
 /** The request a click sends to Claude; `checkout` is the local clone for the session actions. */
 export function buildPrompt(action: Action, item: Item, checkout?: string): string {
   const head = describe(item, action)
-  if (action === 'solve' || action === 'review' || action === 'work') {
+  if (isSessionAction(action)) {
     if (!checkout) {
       return `${head}\nNo local checkout of ${item.repo} was found under ~/sviluppo. Tell me, and ask whether and where to clone it.`
     }
@@ -64,9 +72,41 @@ export function buildPrompt(action: Action, item: Item, checkout?: string): stri
   )
 }
 
-/** Sends the request for `action` on `item` to Claude, as a turn of its own once the session is idle. */
+/** The arguments of the Desktop app's start_session for a session action, run in `checkout`. */
+export function getSessionArgs(action: SessionAction, item: Item, checkout: string): Record<string, unknown> {
+  return {
+    initiation: 'user_asked',
+    context: 'fresh',
+    cwd: checkout,
+    use_worktree: false,
+    title: `${ACTION_LABEL[action]} ${item.repo}#${item.number}`.slice(0, 59),
+    prompt: `${describe(item, action)}\nTask: ${SESSION_TASK[action](item)}.`,
+    background:
+      `Started from the forge-desk pane, a grid of my open issues and PRs, by a click on ${ACTION_LABEL[action]}. ` +
+      `You run in the local checkout of ${item.repo}: follow its CLAUDE.md. Before creating a branch, ask me whether ` +
+      `I want a worktree or a plain branch. ${FORGE_TOOLS}`,
+  }
+}
+
+/**
+ * Runs `action` on `item`: a session action opens a new Desktop session in the local checkout,
+ * the others are a request to Claude here, as a turn of its own once the session is idle.
+ */
 export async function runAction($: EngineInterface, action: Action, item: Item): Promise<void> {
-  const isSession = action === 'solve' || action === 'review' || action === 'work'
-  const checkout = isSession ? await findCheckout($, item.forge, item.repo) : undefined
+  if (!isSessionAction(action)) {
+    await $.prompt.submit({ text: buildPrompt(action, item) })
+    return
+  }
+  const checkout = await findCheckout($, item.forge, item.repo)
+  if (checkout) {
+    try {
+      const result = await $.mcp.call(SESSION_SERVER, 'start_session', getSessionArgs(action, item, checkout))
+      if (!result.isError) return
+      $.ui.log(`forge-desk: start_session refused: ${JSON.stringify(result.content)}`)
+    } catch (error) {
+      $.ui.log(`forge-desk: start_session failed: ${String(error)}`)
+    }
+  }
+  // No checkout, or no Desktop app to start the session: Claude here takes it from the request.
   await $.prompt.submit({ text: buildPrompt(action, item, checkout) })
 }

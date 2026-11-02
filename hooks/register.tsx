@@ -79,6 +79,18 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The desktop app attaches after session.start: seat the pane there if it still waits.
+  on('session.attach', async ($, e, next) => {
+    const result = await next(e)
+    const pane = (await $.ui.panes()).find(open => open.id === PANE)
+    if (!pane?.isPlaced) {
+      const opened = await $.ui.open({ id: PANE, title: TITLE })
+      if (!opened.isPlaced) $.ui.log(`forge-desk: pane not placed on ${e.surface}: ${opened.reason}`, { to: 'debug' })
+    }
+
+    return result
+  })
+
   on('command.run', { command: 'forge-desk' }, async $ => {
     await $.ui.open({ id: PANE, title: TITLE })
     const { count, errors } = await reload($)
