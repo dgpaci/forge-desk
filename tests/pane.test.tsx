@@ -63,3 +63,31 @@ test('the pane opens on Focus and the views switch the list', async ($, on) => {
   expect(await titles()).toEqual(['title 1'])
   await ui.unmount()
 })
+
+test('Open in browser writes the board and opens it', async ($, on) => {
+  const written: string[] = []
+  const opened: string[] = []
+  mock.store(on)
+  mock.clock(on)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('env.get', () => ({ value: '/h' }))
+  on('fs.read', () => ({ value: JSON.stringify({ hosts: {} }) }))
+  on('fs.write', (_, e) => {
+    written.push(e.path)
+    return { value: undefined }
+  })
+  on('process.run', (_, e) => {
+    if (e.argv[0] === 'open') opened.push(e.argv[1])
+    return { value: { exitCode: e.argv[0] === 'open' ? 0 : 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  const ui = await $.ui.mount({
+    plugin: 'forge-desk', component: 'Pane', requestId: 'forge-desk', surface: 'desktop',
+    props: { title: 'Forge desk', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
+  })
+  await ui.press({ key: 'browser' })
+  await ui.unmount()
+
+  expect(written).toContain('/h/.claude/forge-desk/desk.html')
+  expect(opened).toEqual(['/h/.claude/forge-desk/desk.html'])
+})

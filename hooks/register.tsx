@@ -1,7 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import { ACTION_LABEL, getActions, runAction } from './actions'
+import { ACTION_LABEL, getActions, getPromptTitle, runAction } from './actions'
+import { renderBoard } from './board'
+import { getCheckoutMap } from './checkouts'
 import { applyFilter, getActiveView, getAge, getStatusCounts, STATUS_ORDER, toggle, VIEWS } from './filter'
 import type { ViewName } from './filter'
 import { itemKey } from './model'
@@ -13,6 +15,8 @@ const TITLE = 'Forge desk'
 const MAX_ROWS = 200
 const LIST_KEY = 'items-cache-1'
 const REFRESH_MS = 5 * 60 * 1000
+// The browser board, under the home folder.
+const BOARD_PATH = '.claude/forge-desk/desk.html'
 
 // Change a tag when its value's fields change: it declines what an earlier
 // version stored, which outlives a reload.
@@ -37,9 +41,29 @@ type SavedList = { savedAt: number; items: Item[] }
 // The automatic refresh; a reload of the module starts a new one.
 let timer: Timer | undefined
 
-/** Refreshes the list unless a refresh is already running. */
+const getBoardPath = async ($: EngineInterface): Promise<string> => `${await $.env.get('HOME')}/${BOARD_PATH}`
+
+/** Rewrites the browser board from the list as it stands. */
+async function writeBoard($: EngineInterface): Promise<void> {
+  const state = await read($, meta)
+  const board = renderBoard({
+    items: await read($, items), checkouts: await getCheckoutMap($), refreshedAt: state.refreshedAt, errors: state.errors,
+  })
+  await $.fs.write(await getBoardPath($), board)
+}
+
+/** Opens the browser board, written afresh first. */
+async function openBoard($: EngineInterface): Promise<void> {
+  await writeBoard($)
+  const { exitCode, stderr } = await $.process.run(['open', await getBoardPath($)])
+  if (exitCode !== 0) $.ui.log(`forge-desk: the board did not open: ${stderr}`)
+}
+
+/** Refreshes the list; while a refresh is already running, reports the list as it stands. */
 async function reload($: EngineInterface): Promise<{ count: number; errors: string[] }> {
-  if ((await read($, meta)).isLoading) return { count: 0, errors: ['a refresh is already running'] }
+  if ((await read($, meta)).isLoading) {
+    return { count: (await read($, items)).length, errors: ['a refresh is running: the pane updates when it ends'] }
+  }
   await update($, meta, now => ({ ...now, isLoading: true }))
   try {
     const found = await refresh($)
@@ -49,6 +73,8 @@ async function reload($: EngineInterface): Promise<{ count: number; errors: stri
     const refreshedAt = await $.clock.now()
     await $.store.set(LIST_KEY, { savedAt: refreshedAt, items: list } satisfies SavedList)
     await update($, meta, () => ({ refreshedAt, errors: found.errors, isLoading: false }))
+    // The pane holds the list either way: a board that fails to write waits for the next refresh.
+    await writeBoard($).catch(error => $.ui.log(`forge-desk: board not written: ${String(error)}`, { to: 'debug' }))
 
     return { count: list.length, errors: found.errors }
   } catch (error) {
@@ -77,6 +103,26 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The desktop app attaches after session.start: seat the pane there if it still waits.
+  on('session.attach', async ($, e, next) => {
+    const result = await next(e)
+    const pane = (await $.ui.panes()).find(open => open.id === PANE)
+    if (!pane?.isPlaced) {
+      const opened = await $.ui.open({ id: PANE, title: TITLE })
+      if (!opened.isPlaced) $.ui.log(`forge-desk: pane not placed on ${e.surface}: ${opened.reason}`, { to: 'debug' })
+    }
+
+    return result
+  })
+
+  // A session opened by a session link takes the title its prompt carries, not one guessed from the text.
+  on('classic.UserPromptSubmit', async ($, e, next) => {
+    const result = await next(e)
+    const sessionTitle = getPromptTitle(e.prompt)
+
+    return sessionTitle ? { ...result, sessionTitle } : result
+  })
+
   on('command.run', { command: 'forge-desk' }, async $ => {
     await $.ui.open({ id: PANE, title: TITLE })
     const { count, errors } = await reload($)
@@ -98,6 +144,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
+        <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
           {(Object.keys(VIEWS) as ViewName[]).map(view => (
             <Button
@@ -111,6 +158,8 @@ export const register: Register = on => {
           <Button key="refresh" variant="secondary" onPress={() => void reload($)}>
             {state.isLoading ? 'Refreshing…' : 'Refresh'}
           </Button>
+        </Box>
+        <Button key="browser" variant="secondary" onPress={() => void openBoard($)}>Open in browser</Button>
         </Box>
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
           {(Object.keys(ROLE_LABEL) as Role[]).map(role => (
