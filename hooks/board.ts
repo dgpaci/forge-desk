@@ -53,11 +53,16 @@ export function renderBoard(input: BoardInput): string {
 <header>
   <h1>Forge desk</h1>
   <div class="bar" id="views"></div>
-  <div class="bar" id="roles"></div>
-  <div class="bar" id="statuses"></div>
   <div class="bar">
-    <select id="forge"><option value="all">All forges</option><option value="github">GitHub</option><option value="forgejo">Forgejo</option></select>
+    <button class="plain" id="toggle"></button>
     <input id="text" type="search" placeholder="Filter by repo or title">
+  </div>
+  <div id="more">
+    <div class="bar" id="roles"></div>
+    <div class="bar" id="statuses"></div>
+    <div class="bar">
+      <select id="forge"><option value="all">All forges</option><option value="github">GitHub</option><option value="forgejo">Forgejo</option></select>
+    </div>
   </div>
   <div id="errors"></div>
   <p class="dim" id="summary"></p>
@@ -85,6 +90,7 @@ h1 { font-size: 18px; margin: 0 0 12px; }
 .bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 button { border: 1px solid var(--line); background: var(--chip); color: var(--fg); border-radius: 999px; padding: 3px 10px; font: inherit; cursor: pointer; }
 button.on { background: var(--on); border-color: var(--on); color: var(--on-fg); }
+button.plain { border: 0; background: none; color: var(--dim); padding: 3px 4px; }
 select, input { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 6px; padding: 4px 8px; font: inherit; }
 input { flex: 1; min-width: 160px; }
 .dim { color: var(--dim); }
@@ -108,6 +114,9 @@ const VIEW_LABEL = { focus: 'Focus', unassigned: 'To assign', all: 'All' }
 const FORGE_LABEL = { github: 'GH', forgejo: 'FJ' }
 let filter = data.views.focus
 try { if (location.hash) filter = JSON.parse(decodeURIComponent(location.hash.slice(1))) } catch {}
+// Whether the role, status and forge filters are shown: a convenience of this browser alone.
+let isOpen = false
+try { isOpen = localStorage.getItem('forge-desk.showFilters') === '1' } catch {}
 
 const el = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props)
@@ -137,6 +146,8 @@ function draw() {
   for (const row of data.rows) if (matchesExceptStatus(row)) counts[row.status]++
   document.getElementById('statuses').replaceChildren(...data.statuses.map(status =>
     chip(status + ' ' + counts[status], filter.statuses.includes(status), () => set({ statuses: toggle(filter.statuses, status) }))))
+  document.getElementById('more').hidden = !isOpen
+  document.getElementById('toggle').textContent = (isOpen ? '▾' : '▸') + ' Filters' + (!isOpen && !active ? ' · custom' : '')
   document.getElementById('forge').value = filter.forges.length === 1 ? filter.forges[0] : 'all'
   const text = document.getElementById('text'); if (document.activeElement !== text) text.value = filter.text
   document.getElementById('errors').replaceChildren(...data.errors.map(error => el('div', { textContent: error })))
@@ -154,6 +165,11 @@ function draw() {
   )))
 }
 
+document.getElementById('toggle').onclick = () => {
+  isOpen = !isOpen
+  try { localStorage.setItem('forge-desk.showFilters', isOpen ? '1' : '0') } catch {}
+  draw()
+}
 document.getElementById('forge').onchange = event => set({ forges: event.target.value === 'all' ? [] : [event.target.value] })
 document.getElementById('text').oninput = event => set({ text: event.target.value })
 draw()

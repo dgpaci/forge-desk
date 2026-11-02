@@ -20,6 +20,10 @@ test('after session start the pane is on Focus', async ($, on) => {
   const variant = async (key: string) => (await ui.find({ key }))?.props.variant
 
   expect(await variant('view-focus')).toBe('primary')
+  expect(await ui.find({ key: 'role-assignee' })).toBeUndefined()
+  expect((await ui.find({ key: 'filters' }))?.text).toBe('▸ Filters')
+  await ui.press({ key: 'filters' })
+  expect((await ui.find({ key: 'filters' }))?.text).toBe('▾ Filters')
   expect(await variant('role-assignee')).toBe('primary')
   expect(await variant('view-all')).toBe('secondary')
   await ui.unmount()
