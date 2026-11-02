@@ -22,6 +22,8 @@ const BOARD_PATH = '.claude/forge-desk/desk.html'
 // version stored, which outlives a reload.
 const items = atom({ plugin: 'forge-desk', key: 'items' } as const, [], { shape: 'items-2' })
 const filter = atom({ plugin: 'forge-desk', key: 'filter' } as const, VIEWS.focus, { shape: 'filter-1' })
+// Whether the role, status and forge filters are shown; the views alone decide most of the time.
+const showFilters = atom({ plugin: 'forge-desk', key: 'showFilters' } as const, false, { shape: 'show-filters-1' })
 const meta = atom(
   { plugin: 'forge-desk', key: 'meta' } as const,
   { refreshedAt: 0, errors: [], isLoading: false },
@@ -140,6 +142,9 @@ export const register: Register = on => {
     const shown = applyFilter(all, chosen)
     const counts = getStatusCounts(all, chosen)
     const active = getActiveView(chosen)
+    const isOpen = await read($, showFilters)
+    // A filter that is no view stays visible as a hint while the rows are folded.
+    const filtersLabel = `${isOpen ? '▾' : '▸'} Filters${!isOpen && !active ? ' · custom' : ''}`
     const setFilter = (change: Partial<typeof chosen>) => void update($, filter, now => ({ ...now, ...change }))
 
     return (
@@ -161,6 +166,22 @@ export const register: Register = on => {
         </Box>
         <Button key="browser" variant="secondary" onPress={() => void openBoard($)}>Open in browser</Button>
         </Box>
+        <Box flexDirection="row" justifyContent="space-between" columnGap={1}>
+          <Button key="filters" plain onPress={() => void update($, showFilters, now => !now)}>{filtersLabel}</Button>
+          {// mobile draws no Input: the text filter stays out there
+          }
+          {'Input' in elements && (
+          <elements.Input
+            key="text"
+            placeholder="Filter by repo or title"
+            value={chosen.text}
+            onInput={(value: string) => setFilter({ text: value })}
+            onSubmit={(value: string) => setFilter({ text: value })}
+          />
+          )}
+        </Box>
+        {isOpen && (
+        <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
           {(Object.keys(ROLE_LABEL) as Role[]).map(role => (
             <Button
@@ -183,10 +204,9 @@ export const register: Register = on => {
             </Button>
           ))}
         </Box>
-        {// mobile draws no Select or Input: the forge and text filters stay out there
+        {// mobile draws no Select: the forge filter stays out there
         }
-        {'Select' in elements && 'Input' in elements && (
-        <Box flexDirection="row" columnGap={1}>
+        {'Select' in elements && (
           <elements.Select
             key="forge"
             options={[
@@ -197,13 +217,7 @@ export const register: Register = on => {
             value={chosen.forges.length === 1 ? chosen.forges[0] : 'all'}
             onSelect={(value: string) => setFilter({ forges: value === 'all' ? [] : [value as Forge] })}
           />
-          <elements.Input
-            key="text"
-            placeholder="Filter by repo or title"
-            value={chosen.text}
-            onInput={(value: string) => setFilter({ text: value })}
-            onSubmit={(value: string) => setFilter({ text: value })}
-          />
+        )}
         </Box>
         )}
         {state.errors.map(error => (

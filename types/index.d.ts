@@ -37,6 +37,6 @@ export type Meta = { refreshedAt: number; errors: string[]; isLoading: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
-    'forge-desk': { items: Shaped<Item[]>; filter: Shaped<Filter>; meta: Shaped<Meta> }
+    'forge-desk': { items: Shaped<Item[]>; filter: Shaped<Filter>; showFilters: Shaped<boolean>; meta: Shaped<Meta> }
   }
 }
