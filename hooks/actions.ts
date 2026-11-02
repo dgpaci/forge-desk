@@ -18,9 +18,6 @@ type SessionAction = 'solve' | 'review' | 'work'
 const isSessionAction = (action: Action): action is SessionAction =>
   action === 'solve' || action === 'review' || action === 'work'
 
-// The Desktop app's MCP server that starts sessions.
-const SESSION_SERVER = 'ccd_session'
-
 // What the child session started in the local checkout is asked to do.
 const SESSION_TASK: Record<SessionAction, (item: Item) => string> = {
   solve: item =>
@@ -41,51 +38,77 @@ export function getActions(item: Item): Action[] {
   return [main, 'update', 'nudge']
 }
 
+// Opens the line describing the click; on a session link's second line, it marks the first as the title.
+const MARKER = '[forge-desk]'
+
+const TITLE_VERB: Record<Action, string> = { solve: 'Work on', work: 'Work on', review: 'Review', update: 'Update', nudge: 'Nudge' }
+
+/** The name of the session `action` opens on `item`, the repo without its owner: `Review PR app#12`. */
+export function getSessionTitle(action: Action, item: Item): string {
+  return `${TITLE_VERB[action]} ${item.kind === 'pr' ? 'PR' : 'issue'} ${item.repo.split('/').pop()}#${item.number}`
+}
+
+/** The title a session link's prompt carries on its first line; undefined for any other prompt. */
+export function getPromptTitle(prompt: string): string | undefined {
+  const [first, second] = prompt.split('\n', 2)
+
+  return second?.startsWith(MARKER) ? first : undefined
+}
+
 const describe = (item: Item, action: Action): string =>
-  `[forge-desk] I clicked "${ACTION_LABEL[action]}" on ${item.kind} ${item.repo}#${item.number} ` +
+  `${MARKER} I clicked "${ACTION_LABEL[action]}" on ${item.kind} ${item.repo}#${item.number} ` +
   `"${item.title}" (${item.url}), status ${item.status}, assignees: ${item.assignees.join(', ') || 'none'}.`
 
-/** The request a click sends to Claude; `checkout` is the local clone for the session actions. */
-export function buildPrompt(action: Action, item: Item, checkout?: string): string {
-  const head = describe(item, action)
-  if (isSessionAction(action)) {
-    if (!checkout) {
-      return `${head}\nNo local checkout of ${item.repo} was found under ~/sviluppo. Tell me, and ask whether and where to clone it.`
-    }
-    return (
-      `${head}\nThis click is my go-ahead: start a child session in ${checkout} ` +
-      `(start_session, initiation "user_asked", cwd "${checkout}", context "fresh") whose brief is to ` +
-      `${SESSION_TASK[action](item)}. Do not do the work in this session.`
-    )
-  }
+/** What `action` asks of Claude, past the line describing the click. */
+function getTask(action: Action, item: Item): string {
+  if (isSessionAction(action)) return `Task: ${SESSION_TASK[action](item)}. ${FORGE_TOOLS}`
   if (action === 'update') {
     return (
-      `${head}\nSummarize where it stands in a few lines: latest activity and comments, linked PRs and commits, ` +
+      'Summarize where it stands in a few lines: latest activity and comments, linked PRs and commits, ' +
       `review and CI state, who it is waiting on. Read only: post, assign or change nothing. ${FORGE_TOOLS}`
     )
   }
   const target = item.kind === 'pr' && item.status !== 'blocked' ? 'the requested reviewers' : 'whoever it is waiting on'
 
   return (
-    `${head}\nDraft a short, polite comment asking ${target} for news, in the project's language. ` +
+    `Draft a short, polite comment asking ${target} for news, in the project's language. ` +
     `Show me the draft and post it only after my explicit OK in chat; otherwise post nothing. ${FORGE_TOOLS}`
   )
 }
 
-/** The arguments of the Desktop app's start_session for a session action, run in `checkout`. */
-export function getSessionArgs(action: SessionAction, item: Item, checkout: string): Record<string, unknown> {
-  return {
-    initiation: 'user_asked',
-    context: 'fresh',
-    cwd: checkout,
-    use_worktree: false,
-    title: `${ACTION_LABEL[action]} ${item.repo}#${item.number}`.slice(0, 59),
-    prompt: `${describe(item, action)}\nTask: ${SESSION_TASK[action](item)}.`,
-    background:
-      `Started from the forge-desk pane, a grid of my open issues and PRs, by a click on ${ACTION_LABEL[action]}. ` +
-      `You run in the local checkout of ${item.repo}: follow its CLAUDE.md. Before creating a branch, ask me whether ` +
-      `I want a worktree or a plain branch. ${FORGE_TOOLS}`,
-  }
+const NO_CHECKOUT = (item: Item): string =>
+  `No local checkout of ${item.repo} was found under ~/sviluppo. Tell me, and ask whether and where to clone it.`
+
+/** The request a click sends to Claude in this session; `checkout` is the local clone for the session actions. */
+export function buildPrompt(action: Action, item: Item, checkout?: string): string {
+  const head = describe(item, action)
+  if (!isSessionAction(action)) return `${head}\n${getTask(action, item)}`
+  if (!checkout) return `${head}\n${NO_CHECKOUT(item)}`
+
+  return (
+    `${head}\nThis click is my go-ahead: start a child session in ${checkout} ` +
+    `(start_session, initiation "user_asked", cwd "${checkout}", context "fresh", ` +
+    `title "${getSessionTitle(action, item)}") whose brief is to ` +
+    `${SESSION_TASK[action](item)}. Do not do the work in this session.`
+  )
+}
+
+const DEEP_LINK = 'claude://code/new'
+
+/**
+ * The Claude Desktop link that opens a new session on `action`: in `checkout` when there is one,
+ * Desktop asking first to adopt the folder. The prompt's first line is the session's title.
+ */
+export function getSessionLink(action: Action, item: Item, checkout?: string): string {
+  const where = checkout
+    ? `You run in the local checkout of ${item.repo}: follow its CLAUDE.md. Before creating a branch, ask me ` +
+      'whether I want a worktree or a plain branch.'
+    : NO_CHECKOUT(item)
+  const q = `${getSessionTitle(action, item)}\n${describe(item, action)}\n${where}\n${getTask(action, item)}`
+  const params = new URLSearchParams({ q })
+  if (checkout) params.set('folder', checkout)
+
+  return `${DEEP_LINK}?${params.toString().replaceAll('+', '%20')}`
 }
 
 /**
@@ -99,14 +122,10 @@ export async function runAction($: EngineInterface, action: Action, item: Item):
   }
   const checkout = await findCheckout($, item.forge, item.repo)
   if (checkout) {
-    try {
-      const result = await $.mcp.call(SESSION_SERVER, 'start_session', getSessionArgs(action, item, checkout))
-      if (!result.isError) return
-      $.ui.log(`forge-desk: start_session refused: ${JSON.stringify(result.content)}`)
-    } catch (error) {
-      $.ui.log(`forge-desk: start_session failed: ${String(error)}`)
-    }
+    const { exitCode, stderr } = await $.process.run(['open', getSessionLink(action, item, checkout)])
+    if (exitCode === 0) return
+    $.ui.log(`forge-desk: the Claude Desktop link did not open: ${stderr}`)
   }
-  // No checkout, or no Desktop app to start the session: Claude here takes it from the request.
+  // No checkout, or no Desktop app to take the link: Claude here takes it from the request.
   await $.prompt.submit({ text: buildPrompt(action, item, checkout) })
 }

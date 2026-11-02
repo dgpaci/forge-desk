@@ -16,11 +16,15 @@ Statuses:
 | `blocked` | waiting, or assigned to someone else, with no update for 7+ days |
 
 Actions per row, each a request to Claude:
-- **Solve** on issues, **Review** on other people's PRs, **Work on it** on your own PRs: a child
-  session in the local checkout (found by scanning git remotes under `~/sviluppo`); Review posts
-  nothing without your OK;
+- **Solve** on issues, **Review** on other people's PRs, **Work on it** on your own PRs: a new
+  Claude Desktop session in the local checkout (found by scanning git remotes under `~/sviluppo`),
+  opened through the `claude://code/new` link; Review posts nothing without your OK;
 - **Get an update**: a read-only summary;
 - **Nudge**: drafts a comment, posts only after your OK.
+
+**Open in browser**, at the top of the pane, opens the same board as a local page,
+`~/.claude/forge-desk/desk.html`, rewritten on every refresh. There every action, Get an update and
+Nudge included, opens a new Desktop session. The page holds no token.
 
 Status: under development.
 

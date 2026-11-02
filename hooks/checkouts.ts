@@ -68,6 +68,18 @@ async function scan($: EngineInterface): Promise<CheckoutMap> {
   return buildCheckoutMap(configs)
 }
 
+/** Every known checkout, scanning ~/sviluppo again when the cached map is a day old. */
+export async function getCheckoutMap($: EngineInterface): Promise<CheckoutMap> {
+  const now = await $.clock.now()
+  const cached = (await $.store.get(CACHE_KEY)) as Cached | undefined
+  if (cached && now - cached.builtAt < MAX_AGE_MS) return cached.map
+
+  const map = await scan($)
+  await $.store.set(CACHE_KEY, { builtAt: now, map })
+
+  return map
+}
+
 /** The local checkout of `repo`, scanning ~/sviluppo again when the cached map misses or is a day old. */
 export async function findCheckout($: EngineInterface, forge: Forge, repo: string): Promise<string | undefined> {
   const key = repoKey(forge, repo)
