@@ -10,8 +10,10 @@ const issue = (number: number, timeline: object[], updatedAt = '2026-10-29T10:00
 })
 const pr = {
   __typename: 'PullRequest', number: 9, title: 'pr', url: 'https://github.com/acme/app/pull/9',
-  updatedAt: '2026-10-28T10:00:00Z', isDraft: false, reviewDecision: 'APPROVED',
+  updatedAt: '2026-10-28T10:00:00Z', isDraft: false, reviewDecision: 'APPROVED', mergeable: 'UNKNOWN',
   repository: { nameWithOwner: 'acme/app' }, author: { login: 'me' }, assignees: { nodes: [] },
+  reviewRequests: { nodes: [{ requestedReviewer: { login: 'bob' } }, { requestedReviewer: { slug: 'core' } }] },
+  commits: { nodes: [{ commit: { statusCheckRollup: null } }] },
 }
 const search = (nodes: object[], issueCount = nodes.length) => ({ issueCount, nodes })
 
@@ -44,8 +46,20 @@ test('items are merged across clauses and their timeline read', async () => {
   expect(items.find(item => item.number === 1)?.hasCommits).toBe(true)
   expect(items.find(item => item.number === 2)?.hasLinkedPr).toBe(true)
   expect(items.find(item => item.number === 3)?.hasLinkedPr).toBe(false)
-  expect(items.find(item => item.number === 9)).toMatchObject({ kind: 'pr', isApproved: true })
+  expect(items.find(item => item.number === 9)).toMatchObject({
+    kind: 'pr', reviewDecision: 'approved', requestedReviewers: ['bob', 'core'], isMergeable: true, isCiGreen: true,
+  })
+  expect(items.find(item => item.number === 1)).toMatchObject({ reviewDecision: 'none', isCiGreen: false })
   expect(errors).toEqual(['created: showing 3 of 120'])
+})
+
+test('a red check and a conflict are read off the PR', async () => {
+  const red = { ...pr, reviewDecision: 'CHANGES_REQUESTED', mergeable: 'CONFLICTING', commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE' } } }] } }
+  const { items } = parseGithub({
+    data: { viewer: { login: 'me' }, prCreated: search([red]) },
+  } as unknown as GithubResponse)
+
+  expect(items[0]).toMatchObject({ reviewDecision: 'changes', isMergeable: false, isCiGreen: false })
 })
 
 test('a GraphQL error comes back as an error, not a crash', async () => {

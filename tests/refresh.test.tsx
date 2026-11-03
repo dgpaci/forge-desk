@@ -4,13 +4,14 @@ import type { Item } from '../hooks/model'
 
 const item = (forge: Item['forge'], number: number): Item => ({
   forge, repo: 'acme/app', number, kind: 'issue', title: `title ${number}`, url: `https://x/${number}`,
-  updatedAt: '2026-10-29T10:00:00Z', author: 'me', assignees: ['me'], isDraft: false, isApproved: false,
+  updatedAt: '2026-10-29T10:00:00Z', author: 'me', assignees: ['me'], isDraft: false,
+  reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
   hasCommits: false, hasLinkedPr: false, roles: ['assignee'], status: 'todo',
 })
 
 test('offline, the pane keeps the saved list and retries every 5 minutes', async ($, on) => {
   let ghCalls = 0
-  mock.store(on, { 'items-cache-1': { savedAt: 0, items: [item('github', 1), item('forgejo', 2)] } })
+  mock.store(on, { 'items-cache-2': { savedAt: 0, items: [item('github', 1), item('forgejo', 2)] } })
   const clock = mock.clock(on)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('command.register', () => ({ value: { command: 'forge-desk' } }))
@@ -41,7 +42,7 @@ test('offline, the pane keeps the saved list and retries every 5 minutes', async
 test('a command run during a refresh reports the list as it stands', async ($, on) => {
   let release = () => {}
   const offline = new Promise<void>(resolve => { release = resolve })
-  mock.store(on, { 'items-cache-1': { savedAt: 0, items: [item('github', 1), item('forgejo', 2)] } })
+  mock.store(on, { 'items-cache-2': { savedAt: 0, items: [item('github', 1), item('forgejo', 2)] } })
   const clock = mock.clock(on)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('command.register', () => ({ value: { command: 'forge-desk' } }))

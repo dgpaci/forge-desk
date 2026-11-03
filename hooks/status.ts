@@ -3,19 +3,27 @@ import type { Item, RawItem, Status } from './model'
 export const STALE_MS = 7 * 24 * 60 * 60 * 1000
 
 /**
- * Computes the status of an item for `me` at time `now` (ms since epoch).
- * Precedence: blocked > waiting > inprogress > todo > tobeassigned.
+ * Computes the status of an item for `me` at time `now` (ms since epoch): whose
+ * move it is. Mine: ready (approved, green, mergeable: merge it), review
+ * (requested from me), inprogress, todo. Others': waiting, stalled once the
+ * item has had no update for STALE_MS. My own idle work stays inprogress.
  */
 export function getStatus(item: RawItem, me: string, now: number): Status {
   const isStale = now - Date.parse(item.updatedAt) > STALE_MS
   const isOthers = item.assignees.length > 0 && !item.assignees.includes(me)
+  const onOthers: Status = isStale ? 'stalled' : 'waiting'
 
   if (item.kind === 'pr') {
-    const isWaiting = !item.isDraft && !item.isApproved
-    if ((isWaiting || isOthers) && isStale) return 'blocked'
-    return isWaiting ? 'waiting' : 'inprogress'
+    if (item.roles.includes('reviewer') && item.author !== me) return 'review'
+    if (isOthers) return onOthers
+    if (item.isDraft) return 'inprogress'
+    // A pending request outlives an earlier "changes requested": it is the re-request after the fixes.
+    if (item.requestedReviewers.some(login => login !== me)) return onOthers
+    if (item.reviewDecision === 'approved' && item.isCiGreen && item.isMergeable) return 'ready'
+
+    return 'inprogress'
   }
-  if (isOthers && isStale) return 'blocked'
+  if (isOthers) return onOthers
   if (item.assignees.length === 0) return 'tobeassigned'
 
   return item.hasCommits || item.hasLinkedPr ? 'inprogress' : 'todo'

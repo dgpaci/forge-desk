@@ -1,12 +1,12 @@
 import type { Filter, Item, Status } from './model'
 
-export const STATUS_ORDER: Status[] = ['blocked', 'waiting', 'inprogress', 'todo', 'tobeassigned']
+export const STATUS_ORDER: Status[] = ['ready', 'review', 'inprogress', 'todo', 'waiting', 'stalled', 'tobeassigned']
 
 export type ViewName = 'focus' | 'unassigned' | 'all'
 
 // Ready-made filters, one click each in the pane.
 export const VIEWS: Record<ViewName, Filter> = {
-  focus: { roles: ['assignee', 'reviewer'], statuses: ['blocked', 'waiting', 'inprogress', 'todo'], forges: [], text: '' },
+  focus: { roles: ['assignee', 'reviewer'], statuses: ['ready', 'review', 'inprogress', 'todo', 'waiting', 'stalled'], forges: [], text: '' },
   unassigned: { roles: ['author'], statuses: ['tobeassigned'], forges: [], text: '' },
   all: { roles: [], statuses: [], forges: [], text: '' },
 }

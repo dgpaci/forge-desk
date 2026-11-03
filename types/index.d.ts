@@ -1,11 +1,16 @@
 export type Forge = 'github' | 'forgejo'
 export type Kind = 'issue' | 'pr'
-export type Status = 'blocked' | 'waiting' | 'inprogress' | 'todo' | 'tobeassigned'
+// Whose move it is, most urgent first: mine (ready, review, inprogress, todo), others' (waiting,
+// stalled), nobody's yet (tobeassigned).
+export type Status = 'ready' | 'review' | 'inprogress' | 'todo' | 'waiting' | 'stalled' | 'tobeassigned'
+export type ReviewDecision = 'approved' | 'changes' | 'none'
 // Why the item is in the list: the clauses of the selection that matched it.
 export type Role = 'assignee' | 'author' | 'reviewer'
 
 // One open issue or PR, normalised across forges. `hasCommits` and
 // `hasLinkedPr` come from the issue timeline; for PRs they stay false.
+// The review fields are for PRs: `requestedReviewers` holds the reviews still
+// pending, and `isMergeable` / `isCiGreen` stay false on issues.
 export type Item = {
   forge: Forge
   repo: string
@@ -17,7 +22,10 @@ export type Item = {
   author: string
   assignees: string[]
   isDraft: boolean
-  isApproved: boolean
+  reviewDecision: ReviewDecision
+  requestedReviewers: string[]
+  isMergeable: boolean
+  isCiGreen: boolean
   hasCommits: boolean
   hasLinkedPr: boolean
   roles: Role[]

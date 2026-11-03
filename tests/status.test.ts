@@ -9,24 +9,34 @@ const OLD = '2026-10-20T12:00:00Z'
 
 const base: RawItem = {
   forge: 'github', repo: 'acme/app', number: 1, kind: 'issue', title: 't', url: 'u',
-  updatedAt: FRESH, author: 'me', assignees: ['me'], isDraft: false, isApproved: false,
+  updatedAt: FRESH, author: 'me', assignees: ['me'], isDraft: false,
+  reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
   hasCommits: false, hasLinkedPr: false, roles: ['assignee'],
 }
+
+const PR: Partial<RawItem> = { kind: 'pr', roles: ['author'] }
+const GREEN: Partial<RawItem> = { ...PR, reviewDecision: 'approved', isCiGreen: true, isMergeable: true }
 
 const CASES: [string, Partial<RawItem>, string][] = [
   ['issue assigned to me, nothing done', {}, 'todo'],
   ['issue assigned to me, old and untouched', { updatedAt: OLD }, 'todo'],
   ['issue with a commit referencing it', { hasCommits: true }, 'inprogress'],
-  ['issue with a linked PR', { hasLinkedPr: true }, 'inprogress'],
+  ['issue with a linked PR, stale', { hasLinkedPr: true, updatedAt: OLD }, 'inprogress'],
   ['issue I created, nobody assigned', { assignees: [] }, 'tobeassigned'],
-  ['issue assigned to someone else, fresh', { assignees: ['bob'] }, 'todo'],
-  ['issue assigned to someone else, stale', { assignees: ['bob'], updatedAt: OLD }, 'blocked'],
-  ['PR awaiting review', { kind: 'pr' }, 'waiting'],
-  ['PR awaiting review, stale', { kind: 'pr', updatedAt: OLD }, 'blocked'],
-  ['draft PR', { kind: 'pr', isDraft: true }, 'inprogress'],
-  ['draft PR, stale', { kind: 'pr', isDraft: true, updatedAt: OLD }, 'inprogress'],
-  ['approved PR', { kind: 'pr', isApproved: true }, 'inprogress'],
-  ['draft PR assigned to someone else, stale', { kind: 'pr', isDraft: true, assignees: ['bob'], updatedAt: OLD }, 'blocked'],
+  ['issue assigned to someone else, fresh', { assignees: ['bob'] }, 'waiting'],
+  ['issue assigned to someone else, stale', { assignees: ['bob'], updatedAt: OLD }, 'stalled'],
+  ['PR approved, CI green, mergeable', GREEN, 'ready'],
+  ['PR approved, CI red', { ...GREEN, isCiGreen: false }, 'inprogress'],
+  ['PR approved, with conflicts', { ...GREEN, isMergeable: false }, 'inprogress'],
+  ['PR approved, assigned to someone else', { ...GREEN, assignees: ['bob'] }, 'waiting'],
+  ['someone else\'s PR, review requested from me', { kind: 'pr', author: 'bob', roles: ['reviewer'] }, 'review'],
+  ['PR with review requested from others', { ...PR, requestedReviewers: ['bob'] }, 'waiting'],
+  ['PR with review requested from others, stale', { ...PR, requestedReviewers: ['bob'], updatedAt: OLD }, 'stalled'],
+  ['PR re-requested after changes', { ...PR, reviewDecision: 'changes', requestedReviewers: ['bob'] }, 'waiting'],
+  ['PR with changes requested', { ...PR, reviewDecision: 'changes' }, 'inprogress'],
+  ['PR with no reviewer requested, stale', { ...PR, updatedAt: OLD }, 'inprogress'],
+  ['draft PR, stale', { ...PR, isDraft: true, requestedReviewers: ['bob'], updatedAt: OLD }, 'inprogress'],
+  ['draft PR assigned to someone else, stale', { ...PR, isDraft: true, assignees: ['bob'], updatedAt: OLD }, 'stalled'],
 ]
 
 test('the status follows the precedence table', async () => {

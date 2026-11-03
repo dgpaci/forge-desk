@@ -80,10 +80,11 @@ export function renderBoard(input: BoardInput): string {
 
 const STYLE = `
 :root { --bg: #ffffff; --fg: #1f2328; --dim: #656d76; --line: #d0d7de; --chip: #f6f8fa; --on: #0969da; --on-fg: #ffffff;
-  --blocked: #cf222e; --waiting: #9a6700; --inprogress: #0969da; --todo: #1f2328; --tobeassigned: #8250df; }
+  --ready: #1a7f37; --review: #bc4c00; --inprogress: #0969da; --todo: #1f2328; --waiting: #9a6700; --stalled: #cf222e;
+  --tobeassigned: #8250df; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0d1117; --fg: #e6edf3; --dim: #8d96a0;
-  --line: #30363d; --chip: #161b22; --on: #2f81f7; --on-fg: #ffffff; --blocked: #f85149; --waiting: #d29922;
-  --inprogress: #58a6ff; --todo: #e6edf3; --tobeassigned: #bc8cff; } }
+  --line: #30363d; --chip: #161b22; --on: #2f81f7; --on-fg: #ffffff; --ready: #3fb950; --review: #f0883e;
+  --inprogress: #58a6ff; --todo: #e6edf3; --waiting: #d29922; --stalled: #f85149; --tobeassigned: #bc8cff; } }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, system-ui, sans-serif; }
 h1 { font-size: 18px; margin: 0 0 12px; }
@@ -94,11 +95,12 @@ button.plain { border: 0; background: none; color: var(--dim); padding: 3px 4px;
 select, input { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 6px; padding: 4px 8px; font: inherit; }
 input { flex: 1; min-width: 160px; }
 .dim { color: var(--dim); }
-#errors div { color: var(--blocked); }
+#errors div { color: var(--stalled); }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--dim); font-weight: 500; }
 td.status { font-family: ui-monospace, monospace; white-space: nowrap; }
+td.ready { font-weight: 700; }
 a { color: var(--on); text-decoration: none; }
 a:hover { text-decoration: underline; }
 td.actions a { margin-right: 10px; white-space: nowrap; }
@@ -155,7 +157,7 @@ function draw() {
     .sort((a, b) => data.statuses.indexOf(a.status) - data.statuses.indexOf(b.status) || b.updatedAt.localeCompare(a.updatedAt))
   document.getElementById('summary').textContent = shown.length + ' of ' + data.rows.length + ' · updated ' + new Date(data.refreshedAt).toLocaleString()
   document.getElementById('rows').replaceChildren(...shown.map(row => el('tr', {},
-    el('td', { className: 'status', style: 'color: var(--' + row.status + ')', textContent: row.status }),
+    el('td', { className: 'status ' + row.status, style: 'color: var(--' + row.status + ')', textContent: row.status }),
     el('td', { textContent: FORGE_LABEL[row.forge] }),
     el('td', { textContent: row.repo + '#' + row.number }),
     el('td', {}, el('a', { href: row.url, target: '_blank', rel: 'noopener', textContent: row.title }), el('span', { className: 'dim', textContent: ' · ' + row.kind })),

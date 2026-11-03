@@ -7,8 +7,9 @@ import type { Item } from '../hooks/model'
 
 const ITEM: Item = {
   forge: 'forgejo', repo: 'acme/app', number: 7, kind: 'issue', title: 'Fix it', url: 'https://hub.genro.com/acme/app/issues/7',
-  updatedAt: '2026-10-29T10:00:00Z', author: 'me', assignees: ['bob'], isDraft: false, isApproved: false,
-  hasCommits: false, hasLinkedPr: false, roles: ['author'], status: 'blocked',
+  updatedAt: '2026-10-29T10:00:00Z', author: 'me', assignees: ['bob'], isDraft: false,
+  reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
+  hasCommits: false, hasLinkedPr: false, roles: ['author'], status: 'stalled',
 }
 
 test('issues offer Solve, others\' PRs Review, my PRs Work on it', async () => {
@@ -33,7 +34,7 @@ test('an update is read only and a nudge waits for my OK', async () => {
   const nudge = buildPrompt('nudge', ITEM)
   expect(nudge).toContain('only after my explicit OK')
   expect(nudge).toContain('whoever it is waiting on')
-  expect(buildPrompt('nudge', { ...ITEM, kind: 'pr', status: 'waiting' })).toContain('the requested reviewers')
+  expect(buildPrompt('nudge', { ...ITEM, kind: 'pr', status: 'waiting', requestedReviewers: ['bob'] })).toContain('the requested reviewers')
 })
 
 // A Forgejo issue acme/app#7 with its checkout on disk, the pane open on it.

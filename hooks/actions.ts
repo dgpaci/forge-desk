@@ -68,7 +68,7 @@ function getTask(action: Action, item: Item): string {
       `review and CI state, who it is waiting on. Read only: post, assign or change nothing. ${FORGE_TOOLS}`
     )
   }
-  const target = item.kind === 'pr' && item.status !== 'blocked' ? 'the requested reviewers' : 'whoever it is waiting on'
+  const target = item.kind === 'pr' && item.requestedReviewers.length > 0 ? 'the requested reviewers' : 'whoever it is waiting on'
 
   return (
     `Draft a short, polite comment asking ${target} for news, in the project's language. ` +

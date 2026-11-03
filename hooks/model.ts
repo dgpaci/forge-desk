@@ -1,6 +1,6 @@
 import type { Item, Role } from '../types'
 
-export type { Filter, Forge, Item, Kind, Meta, Role, Status } from '../types'
+export type { Filter, Forge, Item, Kind, Meta, ReviewDecision, Role, Status } from '../types'
 
 export type Clause = 'assigned' | 'created' | 'prAssigned' | 'prCreated' | 'reviews'
 
@@ -20,6 +20,10 @@ export function addMatch<T extends { roles: Role[] }>(byKey: Map<string, T>, key
 
 // What a source knows before the status is computed.
 export type RawItem = Omit<Item, 'status'>
+
+// What a PR's review and checks say; an issue keeps NO_REVIEW.
+export type ReviewState = Pick<Item, 'reviewDecision' | 'requestedReviewers' | 'isMergeable' | 'isCiGreen'>
+export const NO_REVIEW: ReviewState = { reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false }
 
 export const itemKey = (item: Pick<Item, 'forge' | 'repo' | 'number'>): string =>
   `${item.forge}:${item.repo}#${item.number}`
