@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { mergeForgejo } from '../hooks/forgejo'
-import type { ForgejoIssue } from '../hooks/forgejo'
+import { mergeForgejo, reviewOf } from '../hooks/forgejo'
+import type { ForgejoIssue, ForgejoPull } from '../hooks/forgejo'
 
 const issue = (number: number, extra: Partial<ForgejoIssue> = {}): ForgejoIssue => ({
   number, title: `t${number}`, html_url: `https://hub.genro.com/acme/app/issues/${number}`,
@@ -28,6 +28,25 @@ test('assigned issues with a linked PR and draft review requests drop out', asyn
   expect(items.map(item => item.number)).toEqual([6, 5, 3, 1])
   expect(items.find(item => item.number === 1)?.hasCommits).toBe(true)
   expect(items.find(item => item.number === 6)).toMatchObject({ kind: 'pr', isDraft: true })
+})
+
+const PULL: ForgejoPull = { mergeable: true, head: { sha: 'abc' }, requested_reviewers: null, requested_reviewers_teams: null }
+const review = (login: string, state: string, dismissed = false) => ({ user: { login }, state, dismissed })
+
+test('each reviewer\'s latest verdict counts, and no CI is green', async () => {
+  expect(reviewOf(PULL, null, '')).toEqual({ reviewDecision: 'none', requestedReviewers: [], isMergeable: true, isCiGreen: true })
+  expect(reviewOf(PULL, [review('bob', 'REQUEST_CHANGES'), review('bob', 'APPROVED')], 'success').reviewDecision).toBe('approved')
+  expect(reviewOf(PULL, [review('bob', 'APPROVED'), review('ann', 'REQUEST_CHANGES')], 'success').reviewDecision).toBe('changes')
+  expect(reviewOf(PULL, [review('ann', 'REQUEST_CHANGES', true), review('bob', 'COMMENT')], 'success').reviewDecision).toBe('none')
+  const pending = reviewOf({ ...PULL, mergeable: false, requested_reviewers: [{ login: 'bob' }], requested_reviewers_teams: [{ name: 'core' }] }, [], 'failure')
+  expect(pending).toEqual({ reviewDecision: 'none', requestedReviewers: ['bob', 'core'], isMergeable: false, isCiGreen: false })
+})
+
+test('the review state lands on PRs only', async () => {
+  const state = { reviewDecision: 'approved', requestedReviewers: [], isMergeable: true, isCiGreen: true } as const
+  const items = mergeForgejo({ prCreated: [issue(6, { pull_request: { draft: false } })] }, {}, { [key(6)]: state })
+
+  expect(items[0]).toMatchObject({ kind: 'pr', ...state })
 })
 
 // The plugin's own `$` reaches the mocks below only through one of its hooks:

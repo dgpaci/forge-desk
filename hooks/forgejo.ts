@@ -1,8 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { SourceResult } from './github'
-import { addMatch, CLAUSE_ROLE, itemKey } from './model'
-import type { Clause, RawItem } from './model'
+import { addMatch, CLAUSE_ROLE, itemKey, NO_REVIEW } from './model'
+import type { Clause, RawItem, ReviewState } from './model'
 
 export const HOST = 'hub.genro.com'
 const API = `https://${HOST}/api/v1`
@@ -30,6 +30,13 @@ export type ForgejoIssue = {
   repository: { full_name: string }
   pull_request: { draft?: boolean } | null
 }
+export type ForgejoPull = {
+  mergeable: boolean
+  head: { sha: string }
+  requested_reviewers: { login: string }[] | null
+  requested_reviewers_teams: { name: string }[] | null
+}
+export type ForgejoReview = { user: { login: string } | null; state: string; dismissed: boolean }
 export type TimelineEvent = { type: string }
 export type Flags = { hasCommits: boolean; hasLinkedPr: boolean }
 // Timeline flags per item key, valid while the item's updated_at is unchanged.
@@ -40,6 +47,30 @@ export const flagsOf = (events: TimelineEvent[] | null): Flags => ({
   hasCommits: (events ?? []).some(event => event.type === 'commit_ref'),
   hasLinkedPr: (events ?? []).some(event => event.type === 'pull_ref'),
 })
+
+/**
+ * The review state of a PR: each reviewer's latest verdict counts, a request
+ * for changes outweighs approvals. A commit with no status has no CI: green.
+ */
+export function reviewOf(pull: ForgejoPull, reviews: ForgejoReview[] | null, ciState: string): ReviewState {
+  const verdicts = new Map<string, string>()
+  for (const review of reviews ?? []) {
+    if (!review.dismissed && (review.state === 'APPROVED' || review.state === 'REQUEST_CHANGES')) {
+      verdicts.set(review.user?.login ?? '', review.state)
+    }
+  }
+  const states = [...verdicts.values()]
+
+  return {
+    reviewDecision: states.includes('REQUEST_CHANGES') ? 'changes' : states.includes('APPROVED') ? 'approved' : 'none',
+    requestedReviewers: [
+      ...(pull.requested_reviewers ?? []).map(one => one.login),
+      ...(pull.requested_reviewers_teams ?? []).map(one => one.name),
+    ],
+    isMergeable: pull.mergeable,
+    isCiGreen: ciState === '' || ciState === 'success',
+  }
+}
 
 function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
   return {
@@ -53,7 +84,7 @@ function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
     author: issue.user?.login ?? '',
     assignees: (issue.assignees ?? []).map(one => one.login),
     isDraft: issue.pull_request?.draft ?? false,
-    isApproved: false,
+    ...NO_REVIEW,
     hasCommits: false,
     hasLinkedPr: false,
     roles: [CLAUSE_ROLE[clause]],
@@ -63,18 +94,20 @@ function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
 /**
  * Merges the clause lists into unique items, newest first. Assigned issues
  * with a linked PR drop out, as `-linked:pr` does on GitHub; drafts drop out
- * of review requests only. `flags` holds the timeline of every issue.
+ * of review requests only. `flags` holds the timeline of every issue,
+ * `reviews` the review state of every PR.
  */
 export function mergeForgejo(
   lists: Partial<Record<Clause, ForgejoIssue[]>>,
   flags: Record<string, Flags>,
+  reviews: Record<string, ReviewState> = {},
 ): RawItem[] {
   const byKey = new Map<string, RawItem>()
   for (const clause of Object.keys(SEARCHES) as Clause[]) {
     for (const issue of lists[clause] ?? []) {
       const item = toItem(issue, clause)
       const key = itemKey(item)
-      const found = { ...item, ...(item.kind === 'issue' ? flags[key] : {}) }
+      const found = { ...item, ...(item.kind === 'issue' ? flags[key] : reviews[key]) }
       if (clause === 'assigned' && found.hasLinkedPr) continue
       if (clause === 'reviews' && found.isDraft) continue
       addMatch(byKey, key, found)
@@ -101,6 +134,22 @@ async function getJson<T>($: EngineInterface, token: string, path: string): Prom
   return JSON.parse(res.text) as T
 }
 
+async function inBatches<T>(list: T[], run: (one: T) => Promise<void>): Promise<void> {
+  for (let at = 0; at < list.length; at += PARALLEL) await Promise.all(list.slice(at, at + PARALLEL).map(run))
+}
+
+/** Reads the PR, its reviews and the checks on its head commit. */
+async function readReview($: EngineInterface, token: string, issue: ForgejoIssue): Promise<ReviewState> {
+  const path = `/repos/${issue.repository.full_name}/pulls/${issue.number}`
+  const [pull, reviews] = await Promise.all([
+    getJson<ForgejoPull>($, token, path),
+    getJson<ForgejoReview[] | null>($, token, `${path}/reviews?limit=100`),
+  ])
+  const status = await getJson<{ state: string }>($, token, `/repos/${issue.repository.full_name}/commits/${pull.head.sha}/status`)
+
+  return reviewOf(pull, reviews, status.state)
+}
+
 async function searchClause($: EngineInterface, token: string, query: string): Promise<ForgejoIssue[]> {
   const found: ForgejoIssue[] = []
   for (let page = 1; page <= MAX_PAGES; page++) {
@@ -113,8 +162,9 @@ async function searchClause($: EngineInterface, token: string, query: string): P
 }
 
 /**
- * Queries Forgejo and reads the timeline of each issue whose updated_at
- * changed since `cache`. Resolves the result and the cache to keep.
+ * Queries Forgejo, reads the timeline of each issue whose updated_at changed
+ * since `cache` and the review state of every PR, which CI can change without
+ * touching updated_at. Resolves the result and the cache to keep.
  */
 export async function fetchForgejo(
   $: EngineInterface,
@@ -138,8 +188,11 @@ export async function fetchForgejo(
     )
 
     const issues = new Map<string, ForgejoIssue>()
+    const pulls = new Map<string, ForgejoIssue>()
     for (const issue of Object.values(lists).flat()) {
-      if (!issue.pull_request) issues.set(itemKey(toItem(issue)), issue)
+      const key = itemKey(toItem(issue))
+      if (issue.pull_request) pulls.set(key, issue)
+      else issues.set(key, issue)
     }
     const kept: TimelineCache = {}
     const stale: [string, ForgejoIssue][] = []
@@ -148,21 +201,25 @@ export async function fetchForgejo(
       if (hit && hit.updatedAt === issue.updated_at) kept[key] = hit
       else stale.push([key, issue])
     }
-    for (let at = 0; at < stale.length; at += PARALLEL) {
-      await Promise.all(
-        stale.slice(at, at + PARALLEL).map(async ([key, issue]) => {
-          try {
-            const path = `/repos/${issue.repository.full_name}/issues/${issue.number}/timeline?limit=100`
-            const events = await getJson<TimelineEvent[] | null>($, token, path)
-            kept[key] = { ...flagsOf(events), updatedAt: issue.updated_at }
-          } catch (error) {
-            errors.push(`${issue.repository.full_name}#${issue.number}: ${String(error)}`)
-          }
-        }),
-      )
-    }
+    await inBatches(stale, async ([key, issue]) => {
+      try {
+        const path = `/repos/${issue.repository.full_name}/issues/${issue.number}/timeline?limit=100`
+        const events = await getJson<TimelineEvent[] | null>($, token, path)
+        kept[key] = { ...flagsOf(events), updatedAt: issue.updated_at }
+      } catch (error) {
+        errors.push(`${issue.repository.full_name}#${issue.number}: ${String(error)}`)
+      }
+    })
+    const reviews: Record<string, ReviewState> = {}
+    await inBatches([...pulls], async ([key, issue]) => {
+      try {
+        reviews[key] = await readReview($, token, issue)
+      } catch (error) {
+        errors.push(`${issue.repository.full_name}#${issue.number}: ${String(error)}`)
+      }
+    })
 
-    return { me, items: mergeForgejo(lists, kept), errors, cache: kept }
+    return { me, items: mergeForgejo(lists, kept, reviews), errors, cache: kept }
   } catch (error) {
     return { me: '', items: [], errors: [...errors, String(error)], cache }
   }

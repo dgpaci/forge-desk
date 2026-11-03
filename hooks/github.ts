@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
-import { addMatch, CLAUSE_ROLE } from './model'
-import type { Clause, RawItem } from './model'
+import { addMatch, CLAUSE_ROLE, NO_REVIEW } from './model'
+import type { Clause, RawItem, ReviewState } from './model'
 
 // One search per clause of the selection, merged client-side: the plain
 // search syntax is sure to work in GraphQL, the boolean one is not.
@@ -19,8 +19,10 @@ const NODE = `nodes { __typename
     timelineItems(first: 100, itemTypes: [REFERENCED_EVENT, CONNECTED_EVENT, CROSS_REFERENCED_EVENT]) {
       nodes { __typename ... on ReferencedEvent { commit { oid } }
         ... on CrossReferencedEvent { willCloseTarget source { __typename } } } } }
-  ... on PullRequest { number title url updatedAt isDraft reviewDecision repository { nameWithOwner }
-    author { login } assignees(first: 10) { nodes { login } } } }`
+  ... on PullRequest { number title url updatedAt isDraft reviewDecision mergeable repository { nameWithOwner }
+    author { login } assignees(first: 10) { nodes { login } }
+    reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
+    commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } }`
 
 export const QUERY = `query { viewer { login } ${Object.entries(SEARCHES)
   .map(([alias, q]) => `${alias}: search(type: ISSUE, first: 100, query: "${q}") { issueCount ${NODE} }`)
@@ -45,6 +47,9 @@ type Node = {
   timelineItems?: { nodes: TimelineNode[] }
   isDraft?: boolean
   reviewDecision?: string | null
+  mergeable?: string
+  reviewRequests?: { nodes: { requestedReviewer: { login?: string; slug?: string } | null }[] }
+  commits?: { nodes: { commit: { statusCheckRollup: { state: string } | null } }[] }
 }
 type Search = { issueCount: number; nodes: Node[] }
 export type GithubResponse = {
@@ -60,6 +65,24 @@ const isLinkingPr = (event: TimelineNode): boolean =>
     event.source?.__typename === 'PullRequest' &&
     event.willCloseTarget === true)
 
+const DECISION: Record<string, ReviewState['reviewDecision']> = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes' }
+
+// UNKNOWN mergeability is still being computed: only a known conflict counts. No checks at all is green.
+function reviewOf(node: Node): ReviewState {
+  if (node.__typename !== 'PullRequest') return NO_REVIEW
+  const rollup = node.commits?.nodes[0]?.commit.statusCheckRollup
+
+  return {
+    reviewDecision: DECISION[node.reviewDecision ?? ''] ?? 'none',
+    requestedReviewers: (node.reviewRequests?.nodes ?? []).flatMap(({ requestedReviewer: one }) => {
+      const name = one?.login ?? one?.slug
+      return name ? [name] : []
+    }),
+    isMergeable: node.mergeable !== 'CONFLICTING',
+    isCiGreen: !rollup || rollup.state === 'SUCCESS',
+  }
+}
+
 function toItem(node: Node, clause: Clause): RawItem {
   const timeline = node.timelineItems?.nodes ?? []
 
@@ -74,7 +97,7 @@ function toItem(node: Node, clause: Clause): RawItem {
     author: node.author?.login ?? '',
     assignees: node.assignees.nodes.flatMap(one => (one ? [one.login] : [])),
     isDraft: node.isDraft ?? false,
-    isApproved: node.reviewDecision === 'APPROVED',
+    ...reviewOf(node),
     hasCommits: timeline.some(event => Boolean(event.commit)),
     hasLinkedPr: timeline.some(isLinkingPr),
     roles: [CLAUSE_ROLE[clause]],

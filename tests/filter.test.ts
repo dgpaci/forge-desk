@@ -6,19 +6,20 @@ import type { Item } from '../hooks/model'
 const item = (number: number, change: Partial<Item>): Item => ({
   forge: 'github', repo: 'acme/app', number, kind: 'issue', title: `title ${number}`, url: 'u',
   updatedAt: `2026-10-${10 + number}T10:00:00Z`, author: 'me', assignees: ['me'], isDraft: false,
-  isApproved: false, hasCommits: false, hasLinkedPr: false, roles: ['assignee'], status: 'todo', ...change,
+  reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
+  hasCommits: false, hasLinkedPr: false, roles: ['assignee'], status: 'todo', ...change,
 })
 
 const ITEMS: Item[] = [
   item(1, {}),
-  item(2, { status: 'blocked', roles: ['reviewer'], kind: 'pr' }),
+  item(2, { status: 'stalled', roles: ['reviewer'], kind: 'pr' }),
   item(3, { status: 'tobeassigned', roles: ['author'], assignees: [] }),
   item(4, { status: 'inprogress', forge: 'forgejo', repo: 'acme/site', roles: ['assignee', 'author'] }),
   item(5, { status: 'todo', roles: ['author'], assignees: ['bob'] }),
 ]
 
 test('focus keeps what is mine to do, most urgent first', async () => {
-  expect(applyFilter(ITEMS, VIEWS.focus).map(one => one.number)).toEqual([2, 4, 1])
+  expect(applyFilter(ITEMS, VIEWS.focus).map(one => one.number)).toEqual([4, 1, 2])
 })
 
 test('unassigned keeps the issues I created with nobody on them', async () => {
@@ -36,8 +37,8 @@ test('forge and text narrow the list', async () => {
 })
 
 test('status counts ignore the status filter itself', async () => {
-  const counts = getStatusCounts(ITEMS, { ...VIEWS.focus, statuses: ['blocked'] })
-  expect(counts).toEqual({ blocked: 1, waiting: 0, inprogress: 1, todo: 1, tobeassigned: 0 })
+  const counts = getStatusCounts(ITEMS, { ...VIEWS.focus, statuses: ['stalled'] })
+  expect(counts).toEqual({ ready: 0, review: 0, inprogress: 1, todo: 1, waiting: 0, stalled: 1, tobeassigned: 0 })
 })
 
 test('toggle and age', async () => {

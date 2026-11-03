@@ -3,12 +3,13 @@ import type { EngineInterface } from 'claude-code'
 import { findCheckout } from './checkouts'
 import type { Item } from './model'
 
-export type Action = 'solve' | 'review' | 'work' | 'update' | 'nudge'
+export type Action = 'solve' | 'review' | 'work' | 'merge' | 'update' | 'nudge'
 
 export const ACTION_LABEL: Record<Action, string> = {
   solve: 'Solve',
   review: 'Review',
   work: 'Work on it',
+  merge: 'Merge',
   update: 'Get an update',
   nudge: 'Nudge',
 }
@@ -31,8 +32,13 @@ const SESSION_TASK: Record<SessionAction, (item: Item) => string> = {
 
 const FORGE_TOOLS = 'Use gh for github.com and the Forgejo API with the fj token for hub.genro.com.'
 
-/** The actions a row offers: Solve on issues, Review on others' PRs, Work on it on mine. */
+/**
+ * The actions a row offers: a ready PR only Merge, a stalled item only Get an update and Nudge;
+ * otherwise Solve on issues, Review on others' PRs, Work on it on mine.
+ */
 export function getActions(item: Item): Action[] {
+  if (item.status === 'ready') return ['merge']
+  if (item.status === 'stalled') return ['update', 'nudge']
   const main: Action = item.kind === 'issue' ? 'solve' : item.roles.includes('author') ? 'work' : 'review'
 
   return [main, 'update', 'nudge']
@@ -41,7 +47,9 @@ export function getActions(item: Item): Action[] {
 // Opens the line describing the click; on a session link's second line, it marks the first as the title.
 const MARKER = '[forge-desk]'
 
-const TITLE_VERB: Record<Action, string> = { solve: 'Work on', work: 'Work on', review: 'Review', update: 'Update', nudge: 'Nudge' }
+const TITLE_VERB: Record<Action, string> = {
+  solve: 'Work on', work: 'Work on', review: 'Review', merge: 'Merge', update: 'Update', nudge: 'Nudge',
+}
 
 /** The name of the session `action` opens on `item`, the repo without its owner: `Review PR app#12`. */
 export function getSessionTitle(action: Action, item: Item): string {
@@ -62,13 +70,21 @@ const describe = (item: Item, action: Action): string =>
 /** What `action` asks of Claude, past the line describing the click. */
 function getTask(action: Action, item: Item): string {
   if (isSessionAction(action)) return `Task: ${SESSION_TASK[action](item)}. ${FORGE_TOOLS}`
+  if (action === 'merge') {
+    return (
+      'This click is my go-ahead to merge it. First check it is still approved, with CI green and no conflicts: ' +
+      'if anything changed, stop and tell me. Otherwise merge it with gh pr merge on github.com or fj pr merge ' +
+      "on hub.genro.com, in the merge style the repository's CLAUDE.md asks for; if it names none, ask me. " +
+      'Merge nothing else.'
+    )
+  }
   if (action === 'update') {
     return (
       'Summarize where it stands in a few lines: latest activity and comments, linked PRs and commits, ' +
       `review and CI state, who it is waiting on. Read only: post, assign or change nothing. ${FORGE_TOOLS}`
     )
   }
-  const target = item.kind === 'pr' && item.status !== 'blocked' ? 'the requested reviewers' : 'whoever it is waiting on'
+  const target = item.kind === 'pr' && item.requestedReviewers.length > 0 ? 'the requested reviewers' : 'whoever it is waiting on'
 
   return (
     `Draft a short, polite comment asking ${target} for news, in the project's language. ` +

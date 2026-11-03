@@ -7,14 +7,24 @@ import type { Item } from '../hooks/model'
 
 const ITEM: Item = {
   forge: 'forgejo', repo: 'acme/app', number: 7, kind: 'issue', title: 'Fix it', url: 'https://hub.genro.com/acme/app/issues/7',
-  updatedAt: '2026-10-29T10:00:00Z', author: 'me', assignees: ['bob'], isDraft: false, isApproved: false,
-  hasCommits: false, hasLinkedPr: false, roles: ['author'], status: 'blocked',
+  updatedAt: '2026-10-29T10:00:00Z', author: 'me', assignees: ['bob'], isDraft: false,
+  reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
+  hasCommits: false, hasLinkedPr: false, roles: ['author'], status: 'stalled',
 }
 
 test('issues offer Solve, others\' PRs Review, my PRs Work on it', async () => {
-  expect(getActions(ITEM)).toEqual(['solve', 'update', 'nudge'])
-  expect(getActions({ ...ITEM, kind: 'pr', roles: ['reviewer'] })[0]).toBe('review')
-  expect(getActions({ ...ITEM, kind: 'pr', roles: ['author', 'assignee'] })[0]).toBe('work')
+  const fresh: Item = { ...ITEM, status: 'waiting' }
+  expect(getActions(fresh)).toEqual(['solve', 'update', 'nudge'])
+  expect(getActions({ ...fresh, kind: 'pr', roles: ['reviewer'] })[0]).toBe('review')
+  expect(getActions({ ...fresh, kind: 'pr', roles: ['author', 'assignee'] })[0]).toBe('work')
+})
+
+test('a ready PR offers only Merge, a stalled item only an update and a nudge', async () => {
+  expect(getActions({ ...ITEM, kind: 'pr', status: 'ready' })).toEqual(['merge'])
+  expect(getActions(ITEM)).toEqual(['update', 'nudge'])
+  const merge = buildPrompt('merge', { ...ITEM, kind: 'pr', status: 'ready' })
+  expect(merge).toContain('go-ahead to merge')
+  expect(merge).toContain('if anything changed, stop')
 })
 
 test('the session actions start a child session in the checkout, or ask to clone', async () => {
@@ -33,7 +43,7 @@ test('an update is read only and a nudge waits for my OK', async () => {
   const nudge = buildPrompt('nudge', ITEM)
   expect(nudge).toContain('only after my explicit OK')
   expect(nudge).toContain('whoever it is waiting on')
-  expect(buildPrompt('nudge', { ...ITEM, kind: 'pr', status: 'waiting' })).toContain('the requested reviewers')
+  expect(buildPrompt('nudge', { ...ITEM, kind: 'pr', status: 'waiting', requestedReviewers: ['bob'] })).toContain('the requested reviewers')
 })
 
 // A Forgejo issue acme/app#7 with its checkout on disk, the pane open on it.
