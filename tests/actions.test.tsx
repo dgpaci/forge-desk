@@ -13,9 +13,18 @@ const ITEM: Item = {
 }
 
 test('issues offer Solve, others\' PRs Review, my PRs Work on it', async () => {
-  expect(getActions(ITEM)).toEqual(['solve', 'update', 'nudge'])
-  expect(getActions({ ...ITEM, kind: 'pr', roles: ['reviewer'] })[0]).toBe('review')
-  expect(getActions({ ...ITEM, kind: 'pr', roles: ['author', 'assignee'] })[0]).toBe('work')
+  const fresh: Item = { ...ITEM, status: 'waiting' }
+  expect(getActions(fresh)).toEqual(['solve', 'update', 'nudge'])
+  expect(getActions({ ...fresh, kind: 'pr', roles: ['reviewer'] })[0]).toBe('review')
+  expect(getActions({ ...fresh, kind: 'pr', roles: ['author', 'assignee'] })[0]).toBe('work')
+})
+
+test('a ready PR offers only Merge, a stalled item only an update and a nudge', async () => {
+  expect(getActions({ ...ITEM, kind: 'pr', status: 'ready' })).toEqual(['merge'])
+  expect(getActions(ITEM)).toEqual(['update', 'nudge'])
+  const merge = buildPrompt('merge', { ...ITEM, kind: 'pr', status: 'ready' })
+  expect(merge).toContain('go-ahead to merge')
+  expect(merge).toContain('if anything changed, stop')
 })
 
 test('the session actions start a child session in the checkout, or ask to clone', async () => {

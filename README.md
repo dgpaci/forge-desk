@@ -27,6 +27,10 @@ Actions per row, each a request to Claude:
 - **Get an update**: a read-only summary;
 - **Nudge**: drafts a comment, posts only after your OK.
 
+A `ready` PR offers only **Merge**: the click is the go-ahead, Claude checks the PR is still
+approved, green and conflict-free, then merges it with `gh` or `fj`. A `stalled` item offers only
+Get an update and Nudge.
+
 **Open in browser**, at the top of the pane, opens the same board as a local page,
 `~/.claude/forge-desk/desk.html`, rewritten on every refresh. There every action, Get an update and
 Nudge included, opens a new Desktop session. The page holds no token.
