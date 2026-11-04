@@ -14,6 +14,9 @@ const INPUT = {
   checkouts: { 'hub.genro.com/acme/app': '/h/sviluppo/app' },
   refreshedAt: Date.parse('2026-10-30T10:00:00Z'),
   errors: [],
+  activities: [],
+  followed: [],
+  activityErrors: [],
 }
 
 test('each row links its actions to Desktop, in the checkout when there is one', async () => {

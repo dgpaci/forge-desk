@@ -91,3 +91,41 @@ test('Open in browser writes the board and opens it', async ($, on) => {
   expect(written).toContain('/h/.claude/forge-desk/desk.html')
   expect(opened).toEqual(['/h/.claude/forge-desk/desk.html'])
 })
+
+test('the Activities page follows a repository and shows its feed', async ($, on) => {
+  mock.store(on)
+  mock.clock(on)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('command.register', () => ({ value: { command: 'forge-desk' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/h' }))
+  on('fs.read', () => ({ value: JSON.stringify({ hosts: { 'hub.genro.com': { token: 't' } } }) }))
+  on('fs.write', () => ({ value: undefined }))
+  on('process.run', () => ({
+    value: { exitCode: 1, stdout: '', stderr: 'gh: offline', isStdoutTruncated: false, isStderrTruncated: false },
+  }))
+  on('http.fetch', (_, e) => {
+    const reply = (body: unknown) => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } })
+    if (e.url.endsWith('/repos/anaci/anaci')) return reply({ full_name: 'anaci/anaci' })
+    if (e.url.includes('/repos/anaci/anaci/activities/feeds')) {
+      return reply([{ id: 1, op_type: 'merge_pull_request', act_user: { login: 'bob' }, repo: { full_name: 'anaci/anaci' },
+        ref_name: '', content: '["522","title login"]', comment: null, created: '2026-11-03T10:00:00Z' }])
+    }
+    if (e.url.endsWith('/user')) return reply({ login: 'me' })
+    return reply([])
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'page-activities' })
+  expect((await ui.find({ type: 'Text', text: /No repository followed/ }))?.text).toBe('No repository followed yet.')
+
+  await ui.input({ key: 'follow-repo', text: 'https://hub.genro.com/anaci/anaci' })
+  const links = (await ui.findAll({ type: 'Link' })).map(link => link.text)
+  expect(links.some(text => text.includes('#522 title login'))).toBe(true)
+  expect((await ui.find({ type: 'Button', text: /anaci\/anaci/ }))?.text).toBe('× FJ anaci/anaci')
+
+  await ui.press({ key: 'unfollow-forgejo:anaci/anaci' })
+  expect((await ui.findAll({ type: 'Link' })).length).toBe(0)
+  await ui.unmount()
+})
