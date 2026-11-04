@@ -15,13 +15,14 @@ export const ACTION_LABEL: Record<Action, string> = {
   nudge: 'Nudge',
 }
 
-type SessionAction = 'solve' | 'review' | 'work'
+type CodeAction = 'solve' | 'review' | 'work'
 
-const isSessionAction = (action: Action): action is SessionAction =>
+// The actions that work on the code, so they cannot run without a local checkout.
+const isCodeAction = (action: Action): action is CodeAction =>
   action === 'solve' || action === 'review' || action === 'work'
 
-// What the child session started in the local checkout is asked to do.
-const SESSION_TASK: Record<SessionAction, (item: Item) => string> = {
+// What a code action asks of the session started in the local checkout.
+const SESSION_TASK: Record<CodeAction, (item: Item) => string> = {
   solve: item =>
     `resolve issue ${item.url}, beginning with the assignment check of my workflow rules`,
   review: item =>
@@ -72,7 +73,7 @@ const describe = (item: Item, action: Action): string =>
 
 /** What `action` asks of Claude, past the line describing the click. */
 function getTask(action: Action, item: Item): string {
-  if (isSessionAction(action)) return `Task: ${SESSION_TASK[action](item)}. ${FORGE_TOOLS}`
+  if (isCodeAction(action)) return `Task: ${SESSION_TASK[action](item)}. ${FORGE_TOOLS}`
   if (action === 'merge') {
     return (
       'This click is my go-ahead to merge it. First check it is still approved, with CI green and no conflicts: ' +
@@ -106,17 +107,19 @@ function getTask(action: Action, item: Item): string {
 const NO_CHECKOUT = (item: Item): string =>
   `No local checkout of ${item.repo} was found under ~/sviluppo. Tell me, and ask whether and where to clone it.`
 
-/** The request a click sends to Claude in this session; `checkout` is the local clone for the session actions. */
+/**
+ * The request a click sends to Claude in this session, when the Desktop link cannot open: with a
+ * `checkout`, start a child session there; without one, a code action asks to clone, the others run here.
+ */
 export function buildPrompt(action: Action, item: Item, checkout?: string): string {
   const head = describe(item, action)
-  if (!isSessionAction(action)) return `${head}\n${getTask(action, item)}`
-  if (!checkout) return `${head}\n${NO_CHECKOUT(item)}`
+  if (!checkout) return `${head}\n${isCodeAction(action) ? NO_CHECKOUT(item) : getTask(action, item)}`
 
   return (
     `${head}\nThis click is my go-ahead: start a child session in ${checkout} ` +
     `(start_session, initiation "user_asked", cwd "${checkout}", context "fresh", ` +
-    `title "${getSessionTitle(action, item)}") whose brief is to ` +
-    `${SESSION_TASK[action](item)}. Do not do the work in this session.`
+    `title "${getSessionTitle(action, item)}") with this brief:\n${getTask(action, item)}\n` +
+    'Do not do the work in this session.'
   )
 }
 
@@ -139,20 +142,15 @@ export function getSessionLink(action: Action, item: Item, checkout?: string): s
 }
 
 /**
- * Runs `action` on `item`: a session action opens a new Desktop session in the local checkout,
- * the others are a request to Claude here, as a turn of its own once the session is idle.
+ * Runs `action` on `item` in a new Desktop session in the local checkout, so the project's CLAUDE.md
+ * applies; without a checkout or the Desktop app, it is a request to Claude here (see `buildPrompt`).
  */
 export async function runAction($: EngineInterface, action: Action, item: Item): Promise<void> {
-  if (!isSessionAction(action)) {
-    await $.prompt.submit({ text: buildPrompt(action, item) })
-    return
-  }
   const checkout = await findCheckout($, item.forge, item.repo)
   if (checkout) {
     const { exitCode, stderr } = await $.process.run(['open', getSessionLink(action, item, checkout)])
     if (exitCode === 0) return
     $.ui.log(`forge-desk: the Claude Desktop link did not open: ${stderr}`)
   }
-  // No checkout, or no Desktop app to take the link: Claude here takes it from the request.
   await $.prompt.submit({ text: buildPrompt(action, item, checkout) })
 }

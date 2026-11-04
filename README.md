@@ -21,10 +21,12 @@ Statuses say whose move it is, most urgent first:
 A pending review request wins over an earlier "changes requested": it is the re-request after the
 fixes. A review request wins over a mention; a mention wins over every other status. CI counts as green when the head commit has no checks at all.
 
-Actions per row, each a request to Claude:
-- **Solve** on issues, **Review** on other people's PRs, **Work on it** on your own PRs: a new
-  Claude Desktop session in the local checkout (found by scanning git remotes under `~/sviluppo`),
-  opened through the `claude://code/new` link; Review posts nothing without your OK;
+Actions per row, each a request to Claude in a new Claude Desktop session in the local checkout
+(found by scanning git remotes under `~/sviluppo`), opened through the `claude://code/new` link, so
+the project's `CLAUDE.md` applies. Without a checkout, the actions on code ask whether to clone it;
+the others run in the current session.
+- **Solve** on issues, **Review** on other people's PRs, **Work on it** on your own PRs; Review
+  posts nothing without your OK;
 - **Get an update**: a read-only summary;
 - **Nudge**: drafts a comment, posts only after your OK;
 - **Discuss**, on `mentioned` items: Claude reads the thread, explains what the mention asks of you,
@@ -37,8 +39,8 @@ beyond the mention.
 
 At the top right of the pane, one button switches between the desk and Activities, showing the icon
 of the page it leads to (📋 desk, ⚡ Activities); beside it, 🌐 opens the same board as a local page,
-`~/.claude/forge-desk/desk.html`, rewritten on every refresh. There every action, Get an update and
-Nudge included, opens a new Desktop session. The page holds no token.
+`~/.claude/forge-desk/desk.html`, rewritten on every refresh. There too every action opens a new
+Desktop session. The page holds no token.
 
 ## Activities
 
