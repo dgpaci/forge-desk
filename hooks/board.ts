@@ -3,12 +3,20 @@ import type { CheckoutMap } from './checkouts'
 import { repoKey } from './checkouts'
 import { getAge, STATUS_ORDER, VIEWS } from './filter'
 import { itemKey } from './model'
-import type { Item } from './model'
+import type { Activity, Followed, Item } from './model'
 
 // The page reloads itself to pick up the file the next refresh writes.
 const RELOAD_MS = 60 * 1000
 
-export type BoardInput = { items: Item[]; checkouts: CheckoutMap; refreshedAt: number; errors: string[] }
+export type BoardInput = {
+  items: Item[]
+  checkouts: CheckoutMap
+  refreshedAt: number
+  errors: string[]
+  activities: Activity[]
+  followed: Followed[]
+  activityErrors: string[]
+}
 
 // One row as the page draws it: ages and links worked out here, so the page only filters.
 type Row = Item & { key: string; age: string; actions: { label: string; href: string }[] }
@@ -39,6 +47,9 @@ export function renderBoard(input: BoardInput): string {
     refreshedAt: new Date(input.refreshedAt).toISOString(),
     errors: input.errors,
     reloadMs: RELOAD_MS,
+    activities: input.activities.map(event => ({ ...event, age: getAge(event.createdAt, input.refreshedAt) })),
+    followed: input.followed,
+    activityErrors: input.activityErrors,
   }
 
   return `<!doctype html>
@@ -50,9 +61,12 @@ export function renderBoard(input: BoardInput): string {
 <style>${STYLE}</style>
 </head>
 <body>
-<header>
-  <h1>Forge desk</h1>
+<div class="top">
   <div class="bar" id="views"></div>
+  <nav class="bar" id="pages"></nav>
+</div>
+<section id="desk">
+<header>
   <div class="bar">
     <button class="plain" id="toggle"></button>
     <input id="text" type="search" placeholder="Filter by repo or title">
@@ -71,6 +85,15 @@ export function renderBoard(input: BoardInput): string {
   <thead><tr><th>Status</th><th>Forge</th><th>Repo</th><th>Title</th><th>Updated</th><th>Assignee</th><th></th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
+</section>
+<section id="activities">
+  <p class="dim" id="followed"></p>
+  <div id="activity-errors"></div>
+  <table>
+    <thead><tr><th>When</th><th>Forge</th><th>Repo</th><th>Who</th><th>What</th></tr></thead>
+    <tbody id="events"></tbody>
+  </table>
+</section>
 <script type="application/json" id="data">${embed(data)}</script>
 <script>${SCRIPT}</script>
 </body>
@@ -86,8 +109,11 @@ const STYLE = `
   --line: #30363d; --chip: #161b22; --on: #2f81f7; --on-fg: #ffffff; --ready: #3fb950; --review: #f0883e; --mentioned: #db61a2;
   --inprogress: #58a6ff; --todo: #e6edf3; --waiting: #d29922; --stalled: #f85149; --tobeassigned: #bc8cff; } }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, system-ui, sans-serif; }
-h1 { font-size: 18px; margin: 0 0 12px; }
+/* The page switch at the top right, beside the desk's views. */
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+nav { margin-left: auto; }
 .bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 button { border: 1px solid var(--line); background: var(--chip); color: var(--fg); border-radius: 999px; padding: 3px 10px; font: inherit; cursor: pointer; }
 button.on { background: var(--on); border-color: var(--on); color: var(--on-fg); }
@@ -95,7 +121,7 @@ button.plain { border: 0; background: none; color: var(--dim); padding: 3px 4px;
 select, input { border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 6px; padding: 4px 8px; font: inherit; }
 input { flex: 1; min-width: 160px; }
 .dim { color: var(--dim); }
-#errors div { color: var(--stalled); }
+#errors div, #activity-errors div { color: var(--stalled); }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--dim); font-weight: 500; }
@@ -119,6 +145,10 @@ try { if (location.hash) filter = JSON.parse(decodeURIComponent(location.hash.sl
 // Whether the role, status and forge filters are shown: a convenience of this browser alone.
 let isOpen = false
 try { isOpen = localStorage.getItem('forge-desk.showFilters') === '1' } catch {}
+const PAGE_ICON = { desk: '📋', activities: '⚡' }
+const PAGE_LABEL = { desk: 'Forge desk', activities: 'Activities' }
+let page = 'desk'
+try { page = localStorage.getItem('forge-desk.page') === 'activities' ? 'activities' : 'desk' } catch {}
 
 const el = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props)
@@ -136,6 +166,36 @@ const matchesExceptStatus = row => {
 }
 const set = change => { filter = { ...filter, ...change }; history.replaceState(null, '', '#' + encodeURIComponent(JSON.stringify(filter))); draw() }
 const chip = (label, isOn, onclick) => el('button', { className: isOn ? 'on' : '', onclick, textContent: label })
+
+function drawActivities() {
+  document.getElementById('followed').textContent = data.followed.length
+    ? 'Following ' + data.followed.map(one => FORGE_LABEL[one.forge] + ' ' + one.repo).join(', ')
+    : 'No repository followed yet: add one from the Activities page of the pane.'
+  document.getElementById('activity-errors').replaceChildren(...data.activityErrors.map(error => el('div', { textContent: error })))
+  document.getElementById('events').replaceChildren(...data.activities.map(event => el('tr', {},
+    el('td', { className: 'dim', textContent: event.age }),
+    el('td', { textContent: FORGE_LABEL[event.forge] }),
+    el('td', { textContent: event.repo }),
+    el('td', { textContent: event.actor }),
+    el('td', {}, el('span', { textContent: event.verb + ' ' }), el('a', { href: event.url, target: '_blank', rel: 'noopener', textContent: event.target || event.repo })),
+  )))
+}
+
+function drawPages() {
+  document.getElementById('pages').replaceChildren(...Object.keys(PAGE_ICON).map(name => {
+    const button = chip(PAGE_ICON[name], name === page, () => {
+      page = name
+      try { localStorage.setItem('forge-desk.page', name) } catch {}
+      drawPages()
+    })
+    button.title = PAGE_LABEL[name]
+    button.setAttribute('aria-label', PAGE_LABEL[name])
+    return button
+  }))
+  document.getElementById('desk').hidden = page !== 'desk'
+  document.getElementById('views').hidden = page !== 'desk'
+  document.getElementById('activities').hidden = page !== 'activities'
+}
 
 function draw() {
   const active = Object.keys(data.views).find(name => { const v = data.views[name]
@@ -174,6 +234,8 @@ document.getElementById('toggle').onclick = () => {
 }
 document.getElementById('forge').onchange = event => set({ forges: event.target.value === 'all' ? [] : [event.target.value] })
 document.getElementById('text').oninput = event => set({ text: event.target.value })
+drawPages()
+drawActivities()
 draw()
 // No reload while the text filter is being typed.
 setInterval(() => { if (document.activeElement?.id !== 'text') location.reload() }, data.reloadMs)

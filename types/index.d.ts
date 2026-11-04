@@ -45,8 +45,37 @@ export type Filter = {
 // The last refresh: when it ended, what went wrong, whether one is running.
 export type Meta = { refreshedAt: number; errors: string[]; isLoading: boolean }
 
+// A repository whose activity the Activities page shows.
+export type Followed = { forge: Forge; repo: string }
+
+// One event on a followed repository, normalised across forges: `actor` did
+// `verb` on `target` (an issue or PR title, a branch), `url` opens it.
+export type Activity = {
+  id: string
+  forge: Forge
+  repo: string
+  actor: string
+  verb: string
+  target: string
+  url: string
+  createdAt: string
+}
+
+// The two pages of the pane.
+export type Page = 'desk' | 'activities'
+
 declare module 'claude-code' {
   interface PluginState {
-    'forge-desk': { items: Shaped<Item[]>; filter: Shaped<Filter>; showFilters: Shaped<boolean>; meta: Shaped<Meta> }
+    'forge-desk': {
+      items: Shaped<Item[]>
+      filter: Shaped<Filter>
+      showFilters: Shaped<boolean>
+      meta: Shaped<Meta>
+      page: Shaped<Page>
+      followed: Shaped<Followed[]>
+      activities: Shaped<Activity[]>
+      activityMeta: Shaped<Meta>
+      followDraft: Shaped<Followed>
+    }
   }
 }

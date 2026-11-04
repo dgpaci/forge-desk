@@ -137,14 +137,14 @@ export function mergeForgejo(
 }
 
 /** Reads the token `fj auth` stored; it never leaves this module's calls. */
-async function readToken($: EngineInterface): Promise<string | undefined> {
+export async function readToken($: EngineInterface): Promise<string | undefined> {
   const home = await $.env.get('HOME')
   const keys = JSON.parse(String(await $.fs.read(`${home}/${KEYS}`)))
 
   return keys?.hosts?.[HOST]?.token
 }
 
-async function getJson<T>($: EngineInterface, token: string, path: string): Promise<T> {
+export async function getJson<T>($: EngineInterface, token: string, path: string): Promise<T> {
   const res = await $.http.fetch(`${API}${path}`, {
     headers: { Authorization: `token ${token}`, Accept: 'application/json' },
   })
