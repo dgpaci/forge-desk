@@ -4,8 +4,8 @@ export const STALE_MS = 7 * 24 * 60 * 60 * 1000
 
 /**
  * Computes the status of an item for `me` at time `now` (ms since epoch): whose
- * move it is. Mine: ready (approved, green, mergeable: merge it), review
- * (requested from me), inprogress, todo. Others': waiting, stalled once the
+ * move it is. Mine: review (requested from me), mentioned (a mention of me
+ * still unanswered), ready (approved, green, mergeable: merge it), inprogress, todo. Others': waiting, stalled once the
  * item has had no update for STALE_MS. My own idle work stays inprogress.
  */
 export function getStatus(item: RawItem, me: string, now: number): Status {
@@ -15,6 +15,7 @@ export function getStatus(item: RawItem, me: string, now: number): Status {
 
   if (item.kind === 'pr') {
     if (item.roles.includes('reviewer') && item.author !== me) return 'review'
+    if (item.mentionUrl) return 'mentioned'
     if (isOthers) return onOthers
     if (item.isDraft) return 'inprogress'
     // A pending request outlives an earlier "changes requested": it is the re-request after the fixes.
@@ -23,6 +24,7 @@ export function getStatus(item: RawItem, me: string, now: number): Status {
 
     return 'inprogress'
   }
+  if (item.mentionUrl) return 'mentioned'
   if (isOthers) return onOthers
   if (item.assignees.length === 0) return 'tobeassigned'
 

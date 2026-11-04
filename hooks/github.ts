@@ -1,31 +1,36 @@
 import type { EngineInterface } from 'claude-code'
 
-import { addMatch, CLAUSE_ROLE, NO_REVIEW } from './model'
+import { addMatch, CLAUSE_ROLE, getPendingMention, isAnsweredMention, NO_REVIEW } from './model'
 import type { Clause, RawItem, ReviewState } from './model'
 
 // One search per clause of the selection, merged client-side: the plain
-// search syntax is sure to work in GraphQL, the boolean one is not.
+// search syntax is sure to work in GraphQL, the boolean one is not. `mentioned`
+// comes last: its match, the only one carrying the thread, sets the mention.
 export const SEARCHES: Record<Clause, string> = {
   assigned: 'is:open is:issue assignee:@me -linked:pr',
   created: 'is:open is:issue author:@me',
   prAssigned: 'is:open is:pr assignee:@me',
   prCreated: 'is:open is:pr author:@me',
   reviews: 'is:open is:pr review-requested:@me draft:false',
+  mentioned: 'is:open mentions:@me',
 }
 
-const NODE = `nodes { __typename
-  ... on Issue { number title url updatedAt repository { nameWithOwner } author { login }
+// The thread, read only where a mention is looked for.
+const THREAD = 'body comments(last: 50) { nodes { url body author { login } } }'
+
+const node = (extra: string): string => `nodes { __typename
+  ... on Issue { ${extra} number title url updatedAt repository { nameWithOwner } author { login }
     assignees(first: 10) { nodes { login } }
     timelineItems(first: 100, itemTypes: [REFERENCED_EVENT, CONNECTED_EVENT, CROSS_REFERENCED_EVENT]) {
       nodes { __typename ... on ReferencedEvent { commit { oid } }
         ... on CrossReferencedEvent { willCloseTarget source { __typename } } } } }
-  ... on PullRequest { number title url updatedAt isDraft reviewDecision mergeable repository { nameWithOwner }
+  ... on PullRequest { ${extra} number title url updatedAt isDraft reviewDecision mergeable repository { nameWithOwner }
     author { login } assignees(first: 10) { nodes { login } }
     reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
     commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } }`
 
 export const QUERY = `query { viewer { login } ${Object.entries(SEARCHES)
-  .map(([alias, q]) => `${alias}: search(type: ISSUE, first: 100, query: "${q}") { issueCount ${NODE} }`)
+  .map(([alias, q]) => `${alias}: search(type: ISSUE, first: 100, query: "${q}") { issueCount ${node(alias === 'mentioned' ? THREAD : '')} }`)
   .join(' ')} }`
 
 type Login = { login: string } | null
@@ -50,6 +55,8 @@ type Node = {
   mergeable?: string
   reviewRequests?: { nodes: { requestedReviewer: { login?: string; slug?: string } | null }[] }
   commits?: { nodes: { commit: { statusCheckRollup: { state: string } | null } }[] }
+  body?: string
+  comments?: { nodes: { url: string; body: string; author: Login }[] }
 }
 type Search = { issueCount: number; nodes: Node[] }
 export type GithubResponse = {
@@ -83,7 +90,18 @@ function reviewOf(node: Node): ReviewState {
   }
 }
 
-function toItem(node: Node, clause: Clause): RawItem {
+// The opening post first, then the comments: whose last mention of `me` is still unanswered.
+function mentionOf(node: Node, me: string): string {
+  if (!node.comments) return ''
+  const posts = [
+    { author: node.author?.login ?? '', body: node.body ?? '', url: node.url },
+    ...node.comments.nodes.map(one => ({ author: one.author?.login ?? '', body: one.body, url: one.url })),
+  ]
+
+  return getPendingMention(posts, me)
+}
+
+function toItem(node: Node, clause: Clause, me: string): RawItem {
   const timeline = node.timelineItems?.nodes ?? []
 
   return {
@@ -100,6 +118,7 @@ function toItem(node: Node, clause: Clause): RawItem {
     ...reviewOf(node),
     hasCommits: timeline.some(event => Boolean(event.commit)),
     hasLinkedPr: timeline.some(isLinkingPr),
+    mentionUrl: mentionOf(node, me),
     roles: [CLAUSE_ROLE[clause]],
   }
 }
@@ -119,11 +138,11 @@ export function parseGithub(response: GithubResponse): SourceResult {
     }
     for (const node of search.nodes) {
       if (node?.__typename === 'Issue' || node?.__typename === 'PullRequest') {
-        addMatch(byUrl, node.url, toItem(node, alias))
+        addMatch(byUrl, node.url, toItem(node, alias, data.viewer.login))
       }
     }
   }
-  const items = [...byUrl.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const items = [...byUrl.values()].filter(item => !isAnsweredMention(item)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 
   return { me: data.viewer.login, items, errors }
 }

@@ -15,7 +15,7 @@ import { refresh } from './refresh'
 const PANE = 'forge-desk'
 const TITLE = 'Forge desk'
 const MAX_ROWS = 200
-const LIST_KEY = 'items-cache-2'
+const LIST_KEY = 'items-cache-3'
 const REFRESH_MS = 5 * 60 * 1000
 const FOLLOWED_KEY = 'followed-1'
 const ACTIVITY_KEY = 'activity-cache-1'
@@ -26,7 +26,7 @@ const BOARD_PATH = '.claude/forge-desk/desk.html'
 
 // Change a tag when its value's fields change: it declines what an earlier
 // version stored, which outlives a reload.
-const items = atom({ plugin: 'forge-desk', key: 'items' } as const, [], { shape: 'items-3' })
+const items = atom({ plugin: 'forge-desk', key: 'items' } as const, [], { shape: 'items-4' })
 const filter = atom({ plugin: 'forge-desk', key: 'filter' } as const, VIEWS.focus, { shape: 'filter-2' })
 // Whether the role, status and forge filters are shown; the views alone decide most of the time.
 const showFilters = atom({ plugin: 'forge-desk', key: 'showFilters' } as const, false, { shape: 'show-filters-1' })
@@ -48,10 +48,12 @@ const followDraft = atom({ plugin: 'forge-desk', key: 'followDraft' } as const, 
 
 // One glyph each, so the switch fits beside Open in browser.
 const PAGE_ICON: Record<Page, string> = { desk: '📋', activities: '⚡' }
-const ROLE_LABEL: Record<Role, string> = { assignee: 'assigned to me', author: 'created by me', reviewer: 'review requested' }
+const ROLE_LABEL: Record<Role, string> = {
+  assignee: 'assigned to me', author: 'created by me', reviewer: 'review requested', mentioned: 'mentions me',
+}
 const VIEW_LABEL: Record<ViewName, string> = { focus: 'Focus', unassigned: 'To assign', all: 'All' }
 const STATUS_COLOR: Record<Status, string> = {
-  ready: 'green', review: 'blue', inprogress: 'cyan', todo: 'white', waiting: 'yellow', stalled: 'red', tobeassigned: 'magenta',
+  ready: 'green', review: 'blue', mentioned: 'green', inprogress: 'cyan', todo: 'white', waiting: 'yellow', stalled: 'red', tobeassigned: 'magenta',
 }
 const FORGE_LABEL: Record<Forge, string> = { github: 'GH', forgejo: 'FJ' }
 

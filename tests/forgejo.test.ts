@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { mergeForgejo, reviewOf } from '../hooks/forgejo'
+import { flagsOf, mergeForgejo, reviewOf } from '../hooks/forgejo'
 import type { ForgejoIssue, ForgejoPull } from '../hooks/forgejo'
 
 const issue = (number: number, extra: Partial<ForgejoIssue> = {}): ForgejoIssue => ({
@@ -19,15 +19,34 @@ test('assigned issues with a linked PR and draft review requests drop out', asyn
       prCreated: [issue(6, { pull_request: { draft: true } })],
     },
     {
-      [key(1)]: { hasCommits: true, hasLinkedPr: false },
-      [key(2)]: { hasCommits: false, hasLinkedPr: true },
-      [key(3)]: { hasCommits: false, hasLinkedPr: false },
+      [key(1)]: { hasCommits: true, hasLinkedPr: false, mentionUrl: '' },
+      [key(2)]: { hasCommits: false, hasLinkedPr: true, mentionUrl: '' },
+      [key(3)]: { hasCommits: false, hasLinkedPr: false, mentionUrl: '' },
     },
   )
 
   expect(items.map(item => item.number)).toEqual([6, 5, 3, 1])
   expect(items.find(item => item.number === 1)?.hasCommits).toBe(true)
   expect(items.find(item => item.number === 6)).toMatchObject({ kind: 'pr', isDraft: true })
+})
+
+test('a mention unanswered stays, one answered drops out, on issues and PRs', async () => {
+  const comment = (login: string, body: string, n: number) => ({ type: 'comment', body, user: { login }, html_url: `c${n}` })
+  const open = issue(8, { user: { login: 'bob' }, assignees: [] })
+  expect(flagsOf([comment('ann', 'what do you think @me?', 1)], open, 'me').mentionUrl).toBe('c1')
+  expect(flagsOf([comment('ann', '@me?', 1), comment('me', 'fine', 2)], open, 'me').mentionUrl).toBe('')
+  expect(flagsOf(null, { ...open, body: 'ping @me' }, 'me').mentionUrl).toBe(open.html_url)
+
+  const items = mergeForgejo(
+    { mentioned: [open, issue(9, { assignees: [] }), issue(10, { pull_request: { draft: false } })] },
+    {
+      [key(8)]: { hasCommits: false, hasLinkedPr: false, mentionUrl: 'c1' },
+      [key(9)]: { hasCommits: false, hasLinkedPr: false, mentionUrl: '' },
+      [key(10)]: { hasCommits: true, hasLinkedPr: false, mentionUrl: 'c5' },
+    },
+  )
+  expect(items.map(item => [item.number, item.mentionUrl])).toEqual([[10, 'c5'], [8, 'c1']])
+  expect(items[0]).toMatchObject({ kind: 'pr', hasCommits: false, roles: ['mentioned'] })
 })
 
 const PULL: ForgejoPull = { mergeable: true, head: { sha: 'abc' }, requested_reviewers: null, requested_reviewers_teams: null }
@@ -51,7 +70,7 @@ test('the review state lands on PRs only', async () => {
 
 // The plugin's own `$` reaches the mocks below only through one of its hooks:
 // the /forge-desk command runs a full refresh.
-const CACHE_KEY = 'forgejo-timeline-1'
+const CACHE_KEY = 'forgejo-timeline-2'
 
 test('timelines are read only for issues whose update changed, an empty one included', async ($, on) => {
   const timelines: string[] = []

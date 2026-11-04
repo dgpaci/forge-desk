@@ -11,6 +11,7 @@ Statuses say whose move it is, most urgent first:
 |---|---|
 | `ready` | your PR is approved, CI green, no conflicts: merge it |
 | `review` | someone else's PR, review requested from you |
+| `mentioned` | someone mentioned you (`@you`) and no comment of yours follows it: answer it |
 | `inprogress` | your move: draft PR, changes requested, PR with no reviewer asked, approved PR with red CI or conflicts; issue with a commit or a linked PR. Idle work of yours stays here |
 | `todo` | issue assigned to you, no commit and no linked PR |
 | `waiting` | others' move: PR with a review pending from someone else, item assigned to someone else |
@@ -18,18 +19,21 @@ Statuses say whose move it is, most urgent first:
 | `tobeassigned` | issue you created, nobody assigned |
 
 A pending review request wins over an earlier "changes requested": it is the re-request after the
-fixes. CI counts as green when the head commit has no checks at all.
+fixes. A review request wins over a mention; a mention wins over every other status. CI counts as green when the head commit has no checks at all.
 
 Actions per row, each a request to Claude:
 - **Solve** on issues, **Review** on other people's PRs, **Work on it** on your own PRs: a new
   Claude Desktop session in the local checkout (found by scanning git remotes under `~/sviluppo`),
   opened through the `claude://code/new` link; Review posts nothing without your OK;
 - **Get an update**: a read-only summary;
-- **Nudge**: drafts a comment, posts only after your OK.
+- **Nudge**: drafts a comment, posts only after your OK;
+- **Discuss**, on `mentioned` items: Claude reads the thread, explains what the mention asks of you,
+  discusses it and drafts the reply, posted only after your OK.
 
 A `ready` PR offers only **Merge**: the click is the go-ahead, Claude checks the PR is still
 approved, green and conflict-free, then merges it with `gh` or `fj`. A `stalled` item offers only
-Get an update and Nudge.
+Get an update and Nudge. A `mentioned` item offers Discuss, then its main action when it is yours
+beyond the mention.
 
 **Open in browser**, at the top of the pane, opens the same board as a local page,
 `~/.claude/forge-desk/desk.html`, rewritten on every refresh. There every action, Get an update and
@@ -57,7 +61,9 @@ Status: under development.
 The repository root is the plugin. Data layer: `hooks/github.ts` (one `gh api graphql` call, one
 search per clause), `hooks/forgejo.ts` (REST, one search per clause, one cached timeline call
 per issue, and per PR its detail, reviews and head-commit status), `hooks/status.ts` (whose move it is), `hooks/activities.ts` (the followed repositories' feeds). Pane: `hooks/register.tsx`, filters and views in
-`hooks/filter.ts` (Focus, the default: assigned to me and review requests, without `tobeassigned`).
+`hooks/filter.ts` (Focus, the default: assigned to me, review requests and unanswered mentions,
+without `tobeassigned`). A mention is unanswered while no comment of mine follows it; items there
+only for an answered mention drop out.
 
 To load it in every session, name the repository in the `env` block of `~/.claude/settings.json`:
 `"CLAUDE_CODE_PLUGIN_DIRS": "<path to this repo>"`. `/forge-desk` opens the pane.

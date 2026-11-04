@@ -7,7 +7,7 @@ const item = (number: number, change: Partial<Item>): Item => ({
   forge: 'github', repo: 'acme/app', number, kind: 'issue', title: `title ${number}`, url: 'u',
   updatedAt: `2026-10-${10 + number}T10:00:00Z`, author: 'me', assignees: ['me'], isDraft: false,
   reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
-  hasCommits: false, hasLinkedPr: false, roles: ['assignee'], status: 'todo', ...change,
+  hasCommits: false, hasLinkedPr: false, mentionUrl: '', roles: ['assignee'], status: 'todo', ...change,
 })
 
 const ITEMS: Item[] = [
@@ -38,7 +38,7 @@ test('forge and text narrow the list', async () => {
 
 test('status counts ignore the status filter itself', async () => {
   const counts = getStatusCounts(ITEMS, { ...VIEWS.focus, statuses: ['stalled'] })
-  expect(counts).toEqual({ ready: 0, review: 0, inprogress: 1, todo: 1, waiting: 0, stalled: 1, tobeassigned: 0 })
+  expect(counts).toEqual({ ready: 0, review: 0, mentioned: 0, inprogress: 1, todo: 1, waiting: 0, stalled: 1, tobeassigned: 0 })
 })
 
 test('toggle and age', async () => {
