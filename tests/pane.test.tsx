@@ -117,8 +117,10 @@ test('the Activities page follows a repository and shows its feed', async ($, on
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  await ui.press({ key: 'page-activities' })
+  expect((await ui.find({ type: 'Button', text: '⚡' }))?.text).toBe('⚡')
+  await ui.press({ key: 'page' })
   expect((await ui.find({ type: 'Text', text: /No repository followed/ }))?.text).toBe('No repository followed yet.')
+  expect((await ui.find({ type: 'Button', text: '📋' }))?.text).toBe('📋')
 
   await ui.input({ key: 'follow-repo', text: 'https://hub.genro.com/anaci/anaci' })
   const links = (await ui.findAll({ type: 'Link' })).map(link => link.text)
@@ -127,5 +129,7 @@ test('the Activities page follows a repository and shows its feed', async ($, on
 
   await ui.press({ key: 'unfollow-forgejo:anaci/anaci' })
   expect((await ui.findAll({ type: 'Link' })).length).toBe(0)
+  await ui.press({ key: 'page' })
+  expect(await ui.find({ type: 'Text', text: /No repository followed/ })).toBeUndefined()
   await ui.unmount()
 })

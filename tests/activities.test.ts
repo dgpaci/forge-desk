@@ -85,7 +85,7 @@ test('an unchanged GitHub feed is not read again, a failing repository keeps its
     plugin: 'forge-desk', component: 'Pane', requestId: 'forge-desk', surface: 'desktop',
     props: { title: 'Forge desk', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
   })
-  await ui.press({ key: 'page-activities' })
+  await ui.press({ key: 'page' })
   const links = (await ui.findAll({ type: 'Link' })).map(link => link.text)
 
   expect(sent.find(argv => argv.includes('-i'))).toContain('If-None-Match: W/"e"')

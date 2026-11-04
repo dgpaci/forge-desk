@@ -35,7 +35,8 @@ approved, green and conflict-free, then merges it with `gh` or `fj`. A `stalled`
 Get an update and Nudge. A `mentioned` item offers Discuss, then its main action when it is yours
 beyond the mention.
 
-**Open in browser**, at the top of the pane, opens the same board as a local page,
+At the top right of the pane, one button switches between the desk and Activities, showing the icon
+of the page it leads to (📋 desk, ⚡ Activities); beside it, 🌐 opens the same board as a local page,
 `~/.claude/forge-desk/desk.html`, rewritten on every refresh. There every action, Get an update and
 Nudge included, opens a new Desktop session. The page holds no token.
 

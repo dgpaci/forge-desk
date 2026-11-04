@@ -46,8 +46,10 @@ const activityMeta = atom(
 )
 const followDraft = atom({ plugin: 'forge-desk', key: 'followDraft' } as const, { forge: 'forgejo', repo: '' }, { shape: 'follow-draft-1' })
 
-// One glyph each, so the switch fits beside Open in browser.
+// One glyph each, so the switch and the board fit in two small buttons. The switch shows where it leads.
 const PAGE_ICON: Record<Page, string> = { desk: '📋', activities: '⚡' }
+const OTHER_PAGE: Record<Page, Page> = { desk: 'activities', activities: 'desk' }
+const BROWSER_ICON = '🌐'
 const ROLE_LABEL: Record<Role, string> = {
   assignee: 'assigned to me', author: 'created by me', reviewer: 'review requested', mentioned: 'mentions me',
 }
@@ -222,12 +224,10 @@ export const register: Register = on => {
       <Box key="header" flexDirection="row" justifyContent="space-between" columnGap={1}>
         {left}
         <Box flexDirection="row" columnGap={1}>
-          {(Object.keys(PAGE_ICON) as Page[]).map(name => (
-            <Button key={`page-${name}`} variant={name === current ? 'primary' : 'secondary'} onPress={() => void update($, page, () => name)}>
-              {PAGE_ICON[name]}
-            </Button>
-          ))}
-          <Button key="browser" variant="secondary" onPress={() => void openBoard($)}>Open in browser</Button>
+          <Button key="page" variant="secondary" onPress={() => void update($, page, () => OTHER_PAGE[current])}>
+            {PAGE_ICON[OTHER_PAGE[current]]}
+          </Button>
+          <Button key="browser" variant="secondary" onPress={() => void openBoard($)}>{BROWSER_ICON}</Button>
         </Box>
       </Box>
     )
