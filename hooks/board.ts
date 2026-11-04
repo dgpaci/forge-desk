@@ -103,10 +103,10 @@ export function renderBoard(input: BoardInput): string {
 
 const STYLE = `
 :root { --bg: #ffffff; --fg: #1f2328; --dim: #656d76; --line: #d0d7de; --chip: #f6f8fa; --on: #0969da; --on-fg: #ffffff;
-  --ready: #1a7f37; --review: #bc4c00; --mentioned: #bf3989; --inprogress: #0969da; --todo: #1f2328; --waiting: #9a6700; --stalled: #cf222e;
+  --ready: #1a7f37; --review: #bc4c00; --mentioned: #1a7f37; --inprogress: #0969da; --todo: #1f2328; --waiting: #9a6700; --stalled: #cf222e;
   --tobeassigned: #8250df; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0d1117; --fg: #e6edf3; --dim: #8d96a0;
-  --line: #30363d; --chip: #161b22; --on: #2f81f7; --on-fg: #ffffff; --ready: #3fb950; --review: #f0883e; --mentioned: #db61a2;
+  --line: #30363d; --chip: #161b22; --on: #2f81f7; --on-fg: #ffffff; --ready: #3fb950; --review: #f0883e; --mentioned: #3fb950;
   --inprogress: #58a6ff; --todo: #e6edf3; --waiting: #d29922; --stalled: #f85149; --tobeassigned: #bc8cff; } }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }

@@ -53,7 +53,7 @@ const ROLE_LABEL: Record<Role, string> = {
 }
 const VIEW_LABEL: Record<ViewName, string> = { focus: 'Focus', unassigned: 'To assign', all: 'All' }
 const STATUS_COLOR: Record<Status, string> = {
-  ready: 'green', review: 'blue', mentioned: 'yellowBright', inprogress: 'cyan', todo: 'white', waiting: 'yellow', stalled: 'red', tobeassigned: 'magenta',
+  ready: 'green', review: 'blue', mentioned: 'green', inprogress: 'cyan', todo: 'white', waiting: 'yellow', stalled: 'red', tobeassigned: 'magenta',
 }
 const FORGE_LABEL: Record<Forge, string> = { github: 'GH', forgejo: 'FJ' }
 
