@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { SourceResult } from './github'
-import { addMatch, CLAUSE_ROLE, itemKey, NO_REVIEW } from './model'
+import { addMatch, CLAUSE_ROLE, getPendingMention, isAnsweredMention, itemKey, NO_REVIEW } from './model'
 import type { Clause, RawItem, ReviewState } from './model'
 
 export const HOST = 'hub.genro.com'
@@ -18,6 +18,7 @@ export const SEARCHES: Record<Clause, string> = {
   prAssigned: 'type=pulls&assigned=true',
   prCreated: 'type=pulls&created=true',
   reviews: 'type=pulls&review_requested=true',
+  mentioned: 'mentioned=true',
 }
 
 export type ForgejoIssue = {
@@ -26,6 +27,7 @@ export type ForgejoIssue = {
   html_url: string
   updated_at: string
   user: { login: string } | null
+  body?: string
   assignees: { login: string }[] | null
   repository: { full_name: string }
   pull_request: { draft?: boolean } | null
@@ -37,16 +39,28 @@ export type ForgejoPull = {
   requested_reviewers_teams: { name: string }[] | null
 }
 export type ForgejoReview = { user: { login: string } | null; state: string; dismissed: boolean }
-export type TimelineEvent = { type: string }
-export type Flags = { hasCommits: boolean; hasLinkedPr: boolean }
+export type TimelineEvent = { type: string; body?: string; html_url?: string; user?: { login: string } | null }
+export type Flags = { hasCommits: boolean; hasLinkedPr: boolean; mentionUrl: string }
 // Timeline flags per item key, valid while the item's updated_at is unchanged.
 export type TimelineCache = Record<string, Flags & { updatedAt: string }>
 
-// Forgejo answers `null`, not `[]`, for an issue with no timeline events.
-export const flagsOf = (events: TimelineEvent[] | null): Flags => ({
-  hasCommits: (events ?? []).some(event => event.type === 'commit_ref'),
-  hasLinkedPr: (events ?? []).some(event => event.type === 'pull_ref'),
-})
+/**
+ * What the timeline of `issue` says, its comments read for a mention of `me`. Forgejo answers
+ * `null`, not `[]`, for an issue with no timeline events.
+ */
+export function flagsOf(events: TimelineEvent[] | null, issue: ForgejoIssue, me: string): Flags {
+  const comments = (events ?? []).filter(event => event.type === 'comment')
+  const posts = [
+    { author: issue.user?.login ?? '', body: issue.body ?? '', url: issue.html_url },
+    ...comments.map(one => ({ author: one.user?.login ?? '', body: one.body ?? '', url: one.html_url ?? issue.html_url })),
+  ]
+
+  return {
+    hasCommits: (events ?? []).some(event => event.type === 'commit_ref'),
+    hasLinkedPr: (events ?? []).some(event => event.type === 'pull_ref'),
+    mentionUrl: getPendingMention(posts, me),
+  }
+}
 
 /**
  * The review state of a PR: each reviewer's latest verdict counts, a request
@@ -87,6 +101,7 @@ function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
     ...NO_REVIEW,
     hasCommits: false,
     hasLinkedPr: false,
+    mentionUrl: '',
     roles: [CLAUSE_ROLE[clause]],
   }
 }
@@ -94,8 +109,9 @@ function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
 /**
  * Merges the clause lists into unique items, newest first. Assigned issues
  * with a linked PR drop out, as `-linked:pr` does on GitHub; drafts drop out
- * of review requests only. `flags` holds the timeline of every issue,
- * `reviews` the review state of every PR.
+ * of review requests only, answered mentions out of the list. `flags` holds
+ * the timeline of every issue and mentioning PR, `reviews` the review state of
+ * every PR.
  */
 export function mergeForgejo(
   lists: Partial<Record<Clause, ForgejoIssue[]>>,
@@ -107,14 +123,17 @@ export function mergeForgejo(
     for (const issue of lists[clause] ?? []) {
       const item = toItem(issue, clause)
       const key = itemKey(item)
-      const found = { ...item, ...(item.kind === 'issue' ? flags[key] : reviews[key]) }
+      const found =
+        item.kind === 'issue'
+          ? { ...item, ...flags[key] }
+          : { ...item, ...reviews[key], mentionUrl: flags[key]?.mentionUrl ?? '' }
       if (clause === 'assigned' && found.hasLinkedPr) continue
       if (clause === 'reviews' && found.isDraft) continue
       addMatch(byKey, key, found)
     }
   }
 
-  return [...byKey.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  return [...byKey.values()].filter(item => !isAnsweredMention(item)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 /** Reads the token `fj auth` stored; it never leaves this module's calls. */
@@ -187,16 +206,19 @@ export async function fetchForgejo(
       }),
     )
 
-    const issues = new Map<string, ForgejoIssue>()
+    // Every issue has its timeline read; a PR only when it mentions me.
+    const threads = new Map<string, ForgejoIssue>()
     const pulls = new Map<string, ForgejoIssue>()
-    for (const issue of Object.values(lists).flat()) {
-      const key = itemKey(toItem(issue))
-      if (issue.pull_request) pulls.set(key, issue)
-      else issues.set(key, issue)
+    for (const [clause, found] of Object.entries(lists) as [Clause, ForgejoIssue[]][]) {
+      for (const issue of found) {
+        const key = itemKey(toItem(issue))
+        if (issue.pull_request) pulls.set(key, issue)
+        if (!issue.pull_request || clause === 'mentioned') threads.set(key, issue)
+      }
     }
     const kept: TimelineCache = {}
     const stale: [string, ForgejoIssue][] = []
-    for (const [key, issue] of issues) {
+    for (const [key, issue] of threads) {
       const hit = cache[key]
       if (hit && hit.updatedAt === issue.updated_at) kept[key] = hit
       else stale.push([key, issue])
@@ -205,7 +227,7 @@ export async function fetchForgejo(
       try {
         const path = `/repos/${issue.repository.full_name}/issues/${issue.number}/timeline?limit=100`
         const events = await getJson<TimelineEvent[] | null>($, token, path)
-        kept[key] = { ...flagsOf(events), updatedAt: issue.updated_at }
+        kept[key] = { ...flagsOf(events, issue, me), updatedAt: issue.updated_at }
       } catch (error) {
         errors.push(`${issue.repository.full_name}#${issue.number}: ${String(error)}`)
       }

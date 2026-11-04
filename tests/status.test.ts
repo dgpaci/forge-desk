@@ -11,7 +11,7 @@ const base: RawItem = {
   forge: 'github', repo: 'acme/app', number: 1, kind: 'issue', title: 't', url: 'u',
   updatedAt: FRESH, author: 'me', assignees: ['me'], isDraft: false,
   reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
-  hasCommits: false, hasLinkedPr: false, roles: ['assignee'],
+  hasCommits: false, hasLinkedPr: false, mentionUrl: '', roles: ['assignee'],
 }
 
 const PR: Partial<RawItem> = { kind: 'pr', roles: ['author'] }
@@ -43,4 +43,12 @@ test('the status follows the precedence table', async () => {
   for (const [name, change, status] of CASES) {
     expect([name, getStatus({ ...base, ...change }, 'me', NOW)]).toEqual([name, status])
   }
+})
+
+test('an unanswered mention is my move, unless a review is', async () => {
+  const mention = { mentionUrl: 'u#c1' }
+  expect(getStatus({ ...base, ...mention, assignees: ['bob'] }, 'me', NOW)).toBe('mentioned')
+  expect(getStatus({ ...base, ...mention, roles: ['mentioned'], assignees: [] }, 'me', NOW)).toBe('mentioned')
+  expect(getStatus({ ...base, ...GREEN, ...mention }, 'me', NOW)).toBe('mentioned')
+  expect(getStatus({ ...base, ...mention, kind: 'pr', roles: ['reviewer'], author: 'bob' }, 'me', NOW)).toBe('review')
 })

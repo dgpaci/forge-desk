@@ -1,16 +1,17 @@
 export type Forge = 'github' | 'forgejo'
 export type Kind = 'issue' | 'pr'
-// Whose move it is, most urgent first: mine (ready, review, inprogress, todo), others' (waiting,
-// stalled), nobody's yet (tobeassigned).
-export type Status = 'ready' | 'review' | 'inprogress' | 'todo' | 'waiting' | 'stalled' | 'tobeassigned'
+// Whose move it is, most urgent first: mine (ready, review, mentioned, inprogress, todo), others'
+// (waiting, stalled), nobody's yet (tobeassigned).
+export type Status = 'ready' | 'review' | 'mentioned' | 'inprogress' | 'todo' | 'waiting' | 'stalled' | 'tobeassigned'
 export type ReviewDecision = 'approved' | 'changes' | 'none'
 // Why the item is in the list: the clauses of the selection that matched it.
-export type Role = 'assignee' | 'author' | 'reviewer'
+export type Role = 'assignee' | 'author' | 'reviewer' | 'mentioned'
 
 // One open issue or PR, normalised across forges. `hasCommits` and
 // `hasLinkedPr` come from the issue timeline; for PRs they stay false.
 // The review fields are for PRs: `requestedReviewers` holds the reviews still
-// pending, and `isMergeable` / `isCiGreen` stay false on issues.
+// pending, and `isMergeable` / `isCiGreen` stay false on issues. `mentionUrl` points at the
+// latest mention of me nobody has answered with a comment of mine since; '' when there is none.
 export type Item = {
   forge: Forge
   repo: string
@@ -28,6 +29,7 @@ export type Item = {
   isCiGreen: boolean
   hasCommits: boolean
   hasLinkedPr: boolean
+  mentionUrl: string
   roles: Role[]
   status: Status
 }

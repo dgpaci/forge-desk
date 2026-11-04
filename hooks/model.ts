@@ -2,7 +2,7 @@ import type { Item, Role } from '../types'
 
 export type { Filter, Forge, Item, Kind, Meta, ReviewDecision, Role, Status } from '../types'
 
-export type Clause = 'assigned' | 'created' | 'prAssigned' | 'prCreated' | 'reviews'
+export type Clause = 'assigned' | 'created' | 'prAssigned' | 'prCreated' | 'reviews' | 'mentioned'
 
 export const CLAUSE_ROLE: Record<Clause, Role> = {
   assigned: 'assignee',
@@ -10,6 +10,7 @@ export const CLAUSE_ROLE: Record<Clause, Role> = {
   prAssigned: 'assignee',
   prCreated: 'author',
   reviews: 'reviewer',
+  mentioned: 'mentioned',
 }
 
 /** Adds `item` to `byKey`, joining its roles with those of an earlier match. */
@@ -27,3 +28,28 @@ export const NO_REVIEW: ReviewState = { reviewDecision: 'none', requestedReviewe
 
 export const itemKey = (item: Pick<Item, 'forge' | 'repo' | 'number'>): string =>
   `${item.forge}:${item.repo}#${item.number}`
+
+// One post of a thread, the opening body included: who wrote it, what it says, where it is.
+export type Post = { author: string; body: string; url: string }
+
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * The url of the latest post by someone else that mentions `me` with no post of mine after it;
+ * '' when every mention has had its answer. `posts` go oldest first.
+ */
+export function getPendingMention(posts: Post[], me: string): string {
+  if (!me) return ''
+  const mention = new RegExp(`@${escapeRegExp(me)}(?![\\w-])`, 'i')
+  let pending = ''
+  for (const post of posts) {
+    if (post.author === me) pending = ''
+    else if (mention.test(post.body)) pending = post.url
+  }
+
+  return pending
+}
+
+/** An item in the list only because it mentions me, and already answered: it drops out. */
+export const isAnsweredMention = (item: Pick<Item, 'roles' | 'mentionUrl'>): boolean =>
+  !item.mentionUrl && item.roles.every(role => role === 'mentioned')

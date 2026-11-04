@@ -7,7 +7,7 @@ const ITEM: Item = {
   forge: 'forgejo', repo: 'acme/app', number: 7, kind: 'issue', title: 'Breaks on </script>', url: 'https://hub.genro.com/acme/app/issues/7',
   updatedAt: '2026-10-29T10:00:00Z', author: 'me', assignees: ['me'], isDraft: false,
   reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
-  hasCommits: false, hasLinkedPr: false, roles: ['assignee'], status: 'todo',
+  hasCommits: false, hasLinkedPr: false, mentionUrl: '', roles: ['assignee'], status: 'todo',
 }
 const INPUT = {
   items: [ITEM, { ...ITEM, repo: 'acme/other', number: 1 }],

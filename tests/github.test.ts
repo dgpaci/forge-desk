@@ -18,7 +18,7 @@ const pr = {
 const search = (nodes: object[], issueCount = nodes.length) => ({ issueCount, nodes })
 
 test('the query carries one search per clause', async () => {
-  for (const alias of ['assigned', 'created', 'prAssigned', 'prCreated', 'reviews']) {
+  for (const alias of ['assigned', 'created', 'prAssigned', 'prCreated', 'reviews', 'mentioned']) {
     expect(QUERY.includes(`${alias}: search(`)).toBe(true)
   }
 })
@@ -64,4 +64,27 @@ test('a red check and a conflict are read off the PR', async () => {
 
 test('a GraphQL error comes back as an error, not a crash', async () => {
   expect(parseGithub({ errors: [{ message: 'Bad credentials' }] })).toEqual({ me: '', items: [], errors: ['Bad credentials'] })
+})
+
+test('a mention is read off the thread, an answered one drops out', async () => {
+  const thread = (number: number, comments: object[]) => ({
+    ...issue(number, []), assignees: { nodes: [] }, author: { login: 'bob' }, body: 'opening',
+    comments: { nodes: comments },
+  })
+  const comment = (login: string, body: string, url: string) => ({ url, body, author: { login } })
+  const { items } = parseGithub({
+    data: {
+      viewer: { login: 'me' },
+      created: search([issue(3, [])]),
+      mentioned: search([
+        thread(1, [comment('ann', 'cc @me', 'c1')]),
+        thread(2, [comment('ann', 'cc @me', 'c2'), comment('me', 'done', 'c3')]),
+        { ...thread(3, [comment('ann', 'and @me?', 'c4')]), author: { login: 'me' }, assignees: { nodes: [{ login: 'me' }] } },
+      ]),
+    },
+  } as unknown as GithubResponse)
+
+  expect(items.map(item => [item.number, item.mentionUrl])).toEqual([[3, 'c4'], [1, 'c1']])
+  expect(items.find(item => item.number === 3)?.roles).toEqual(['author', 'mentioned'])
+  expect(QUERY.match(/comments\(last: 50\)/g)).toHaveLength(2)
 })

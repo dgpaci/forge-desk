@@ -6,7 +6,7 @@ import { fetchGithub } from './github'
 import type { Forge, Item } from './model'
 import { withStatus } from './status'
 
-const CACHE_KEY = 'forgejo-timeline-1'
+const CACHE_KEY = 'forgejo-timeline-2'
 
 // `failed` names the forges that answered nothing but errors: their previous items stay.
 export type Refreshed = { items: Item[]; errors: string[]; failed: Forge[] }

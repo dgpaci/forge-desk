@@ -9,7 +9,7 @@ const ITEM: Item = {
   forge: 'forgejo', repo: 'acme/app', number: 7, kind: 'issue', title: 'Fix it', url: 'https://hub.genro.com/acme/app/issues/7',
   updatedAt: '2026-10-29T10:00:00Z', author: 'me', assignees: ['bob'], isDraft: false,
   reviewDecision: 'none', requestedReviewers: [], isMergeable: false, isCiGreen: false,
-  hasCommits: false, hasLinkedPr: false, roles: ['author'], status: 'stalled',
+  hasCommits: false, hasLinkedPr: false, mentionUrl: '', roles: ['author'], status: 'stalled',
 }
 
 test('issues offer Solve, others\' PRs Review, my PRs Work on it', async () => {
@@ -36,6 +36,16 @@ test('the session actions start a child session in the checkout, or ask to clone
   expect(review).toContain('code-review skill')
   expect(review).toContain('no review comment without my explicit OK')
   expect(buildPrompt('solve', ITEM)).toContain('No local checkout of acme/app')
+})
+
+test('an unanswered mention offers Discuss, then the main action when the item is mine', async () => {
+  const mentioned: Item = { ...ITEM, status: 'mentioned', mentionUrl: 'https://hub.genro.com/acme/app/issues/7#issuecomment-3' }
+  expect(getActions(mentioned)).toEqual(['discuss', 'solve'])
+  expect(getActions({ ...mentioned, roles: ['mentioned'] })).toEqual(['discuss'])
+  const discuss = buildPrompt('discuss', mentioned)
+  expect(discuss).toContain('mentioned at https://hub.genro.com/acme/app/issues/7#issuecomment-3')
+  expect(discuss).toContain('only after my explicit OK')
+  expect(getSessionTitle('discuss', mentioned)).toBe('Discuss issue app#7')
 })
 
 test('an update is read only and a nudge waits for my OK', async () => {

@@ -3,12 +3,13 @@ import type { EngineInterface } from 'claude-code'
 import { findCheckout } from './checkouts'
 import type { Item } from './model'
 
-export type Action = 'solve' | 'review' | 'work' | 'merge' | 'update' | 'nudge'
+export type Action = 'solve' | 'review' | 'work' | 'discuss' | 'merge' | 'update' | 'nudge'
 
 export const ACTION_LABEL: Record<Action, string> = {
   solve: 'Solve',
   review: 'Review',
   work: 'Work on it',
+  discuss: 'Discuss',
   merge: 'Merge',
   update: 'Get an update',
   nudge: 'Nudge',
@@ -33,13 +34,15 @@ const SESSION_TASK: Record<SessionAction, (item: Item) => string> = {
 const FORGE_TOOLS = 'Use gh for github.com and the Forgejo API with the fj token for hub.genro.com.'
 
 /**
- * The actions a row offers: a ready PR only Merge, a stalled item only Get an update and Nudge;
+ * The actions a row offers: a ready PR only Merge, a stalled item only Get an update and Nudge,
+ * an unanswered mention Discuss, then the main action when the item is mine beyond the mention;
  * otherwise Solve on issues, Review on others' PRs, Work on it on mine.
  */
 export function getActions(item: Item): Action[] {
   if (item.status === 'ready') return ['merge']
   if (item.status === 'stalled') return ['update', 'nudge']
   const main: Action = item.kind === 'issue' ? 'solve' : item.roles.includes('author') ? 'work' : 'review'
+  if (item.status === 'mentioned') return item.roles.some(role => role !== 'mentioned') ? ['discuss', main] : ['discuss']
 
   return [main, 'update', 'nudge']
 }
@@ -48,7 +51,7 @@ export function getActions(item: Item): Action[] {
 const MARKER = '[forge-desk]'
 
 const TITLE_VERB: Record<Action, string> = {
-  solve: 'Work on', work: 'Work on', review: 'Review', merge: 'Merge', update: 'Update', nudge: 'Nudge',
+  solve: 'Work on', work: 'Work on', review: 'Review', discuss: 'Discuss', merge: 'Merge', update: 'Update', nudge: 'Nudge',
 }
 
 /** The name of the session `action` opens on `item`, the repo without its owner: `Review PR app#12`. */
@@ -76,6 +79,14 @@ function getTask(action: Action, item: Item): string {
       'if anything changed, stop and tell me. Otherwise merge it with gh pr merge on github.com or fj pr merge ' +
       "on hub.genro.com, in the merge style the repository's CLAUDE.md asks for; if it names none, ask me. " +
       'Merge nothing else.'
+    )
+  }
+  if (action === 'discuss') {
+    return (
+      `I was mentioned at ${item.mentionUrl || item.url} and have not answered yet. Read the thread and explain ` +
+      'in a few lines what the mention asks of me and the context it needs, the code included when the question ' +
+      "is about code. Then discuss it with me and draft a reply in the project's language; post it only after " +
+      `my explicit OK in chat, otherwise post nothing. ${FORGE_TOOLS}`
     )
   }
   if (action === 'update') {
