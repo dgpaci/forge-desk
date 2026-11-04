@@ -35,13 +35,28 @@ Get an update and Nudge.
 `~/.claude/forge-desk/desk.html`, rewritten on every refresh. There every action, Get an update and
 Nudge included, opens a new Desktop session. The page holds no token.
 
+## Activities
+
+The pane has two pages, **Forge desk** (the grid above) and **Activities**: a feed of what happens
+on the repositories you follow — pushes, branches and tags, issues and PRs opened, closed and
+merged, reviews and comments — newest first, each line linked.
+
+Follow a repository from the Activities page: pick the forge and write `owner/repo`, or paste
+its URL (the host decides the forge). The list is kept across sessions; `×` stops following.
+The forges' own "watch" is not used: on Forgejo everything is watched by default.
+
+The feed is polled in the background every 2 minutes, one call per repository
+(`/repos/{repo}/events` through `gh`, `/repos/{repo}/activities/feeds` on Forgejo). GitHub calls
+carry the last ETag, so an unchanged feed answers 304, which does not count against the rate
+limit. The browser board shows the same feed on its own Activities tab.
+
 Status: under development.
 
 ## Development
 
 The repository root is the plugin. Data layer: `hooks/github.ts` (one `gh api graphql` call, one
 search per clause), `hooks/forgejo.ts` (REST, one search per clause, one cached timeline call
-per issue, and per PR its detail, reviews and head-commit status), `hooks/status.ts` (whose move it is). Pane: `hooks/register.tsx`, filters and views in
+per issue, and per PR its detail, reviews and head-commit status), `hooks/status.ts` (whose move it is), `hooks/activities.ts` (the followed repositories' feeds). Pane: `hooks/register.tsx`, filters and views in
 `hooks/filter.ts` (Focus, the default: assigned to me and review requests, without `tobeassigned`).
 
 To load it in every session, name the repository in the `env` block of `~/.claude/settings.json`:
