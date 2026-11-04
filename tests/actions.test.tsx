@@ -38,6 +38,17 @@ test('the session actions start a child session in the checkout, or ask to clone
   expect(buildPrompt('solve', ITEM)).toContain('No local checkout of acme/app')
 })
 
+test('every action runs in a child session in the checkout; without one only the code actions ask to clone', async () => {
+  for (const action of ['discuss', 'merge', 'update', 'nudge'] as const) {
+    const prompt = buildPrompt(action, ITEM, '/h/sviluppo/acme/app')
+    expect(prompt).toContain('cwd "/h/sviluppo/acme/app"')
+    expect(prompt).toContain('Do not do the work in this session')
+    expect(buildPrompt(action, ITEM)).not.toContain('No local checkout')
+  }
+  expect(buildPrompt('discuss', ITEM, '/h/sviluppo/acme/app')).toContain('draft a reply')
+  expect(new URL(getSessionLink('discuss', ITEM, '/h/sviluppo/acme/app')).searchParams.get('folder')).toBe('/h/sviluppo/acme/app')
+})
+
 test('an unanswered mention offers Discuss, then the main action when the item is mine', async () => {
   const mentioned: Item = { ...ITEM, status: 'mentioned', mentionUrl: 'https://hub.genro.com/acme/app/issues/7#issuecomment-3' }
   expect(getActions(mentioned)).toEqual(['discuss', 'solve'])
