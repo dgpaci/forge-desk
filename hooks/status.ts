@@ -18,9 +18,10 @@ export function getStatus(item: RawItem, me: string, now: number): Status {
     if (item.mentionUrl) return 'mentioned'
     if (isOthers) return onOthers
     if (item.isDraft) return 'inprogress'
+    // One approval is enough to merge: still-pending requests to other reviewers do not hold it back.
+    if (item.reviewDecision === 'approved' && item.isCiGreen && item.isMergeable) return 'ready'
     // A pending request outlives an earlier "changes requested": it is the re-request after the fixes.
     if (item.requestedReviewers.some(login => login !== me)) return onOthers
-    if (item.reviewDecision === 'approved' && item.isCiGreen && item.isMergeable) return 'ready'
 
     return 'inprogress'
   }

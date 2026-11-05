@@ -29,6 +29,8 @@ const CASES: [string, Partial<RawItem>, string][] = [
   ['PR approved, CI red', { ...GREEN, isCiGreen: false }, 'inprogress'],
   ['PR approved, with conflicts', { ...GREEN, isMergeable: false }, 'inprogress'],
   ['PR approved, assigned to someone else', { ...GREEN, assignees: ['bob'] }, 'waiting'],
+  ['PR approved, review still requested from others', { ...GREEN, requestedReviewers: ['bob'] }, 'ready'],
+  ['PR approved, CI red, review still requested from others', { ...GREEN, isCiGreen: false, requestedReviewers: ['bob'] }, 'waiting'],
   ['someone else\'s PR, review requested from me', { kind: 'pr', author: 'bob', roles: ['reviewer'] }, 'review'],
   ['PR with review requested from others', { ...PR, requestedReviewers: ['bob'] }, 'waiting'],
   ['PR with review requested from others, stale', { ...PR, requestedReviewers: ['bob'], updatedAt: OLD }, 'stalled'],
