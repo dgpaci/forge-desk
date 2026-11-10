@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import { getJson, HOST, readToken } from './forgejo'
-import type { Activity, Followed, Forge } from './model'
+import type { Activity, Followed, Forge, Kind } from './model'
 
 const GITHUB = 'https://github.com'
 const FORGEJO = `https://${HOST}`
@@ -60,7 +60,8 @@ export function fromGithub(event: GithubEvent): Activity {
   const pull = p.pull_request
   const pr = pull ? `#${pull.number}${pull.title ? ` ${pull.title}` : ''}` : ''
   const pullUrl = pull ? (pull.html_url ?? `${base}/pull/${pull.number}`) : base
-  const line = (verb: string, target: string, url: string) => ({ verb, target, url })
+  const line = (verb: string, target: string, url: string, number = 0, kind: Kind | '' = '') => ({ verb, target, url, number, kind })
+  const issueKind: Kind = p.issue?.pull_request ? 'pr' : 'issue'
   const shown = (() => {
     switch (event.type) {
       case 'PushEvent':
@@ -70,15 +71,15 @@ export function fromGithub(event: GithubEvent): Activity {
       case 'DeleteEvent':
         return line(`deleted ${p.ref_type ?? ''}`.trim(), p.ref ?? '', base)
       case 'IssuesEvent':
-        return line(`${p.action} issue`, `#${p.issue?.number} ${p.issue?.title ?? ''}`.trim(), p.issue?.html_url ?? base)
+        return line(`${p.action} issue`, `#${p.issue?.number} ${p.issue?.title ?? ''}`.trim(), p.issue?.html_url ?? base, p.issue?.number, 'issue')
       case 'IssueCommentEvent':
-        return line(`commented on ${p.issue?.pull_request ? 'PR' : 'issue'}`, `#${p.issue?.number} ${p.issue?.title ?? ''}`.trim(), p.comment?.html_url ?? base)
+        return line(`commented on ${issueKind === 'pr' ? 'PR' : 'issue'}`, `#${p.issue?.number} ${p.issue?.title ?? ''}`.trim(), p.comment?.html_url ?? base, p.issue?.number, issueKind)
       case 'PullRequestEvent':
-        return line(`${p.action === 'closed' && pull?.merged ? 'merged' : p.action} PR`, pr, pullUrl)
+        return line(`${p.action === 'closed' && pull?.merged ? 'merged' : p.action} PR`, pr, pullUrl, pull?.number, 'pr')
       case 'PullRequestReviewEvent':
-        return line(`${REVIEW_VERB[p.review?.state ?? ''] ?? 'reviewed'} PR`, pr, p.review?.html_url ?? pullUrl)
+        return line(`${REVIEW_VERB[p.review?.state ?? ''] ?? 'reviewed'} PR`, pr, p.review?.html_url ?? pullUrl, pull?.number, 'pr')
       case 'PullRequestReviewCommentEvent':
-        return line('commented on the review of PR', pr, p.comment?.html_url ?? pullUrl)
+        return line('commented on the review of PR', pr, p.comment?.html_url ?? pullUrl, pull?.number, 'pr')
       case 'ReleaseEvent':
         return line('published release', p.release?.name || p.release?.tag_name || '', p.release?.html_url ?? base)
       default:
@@ -134,13 +135,14 @@ export function fromForgejo(one: ForgejoActivity): Activity {
   const repo = one.repo.full_name
   const base = `${FORGEJO}/${repo}`
   const op = FORGEJO_OPS[one.op_type]
-  const line = (verb: string, target: string, url: string) => ({ verb, target, url })
+  const line = (verb: string, target: string, url: string, number = 0, kind: Kind | '' = '') => ({ verb, target, url, number, kind })
   const shown = (() => {
     if (op) {
       const [number, text] = numberAndText(one.content)
       const isComment = one.op_type.startsWith('comment')
       const target = isComment ? `#${number}` : `#${number} ${text}`.trim()
-      return line(op[0], target, one.comment?.html_url || `${base}/${op[1] ? 'pulls' : 'issues'}/${number}`)
+      const url = one.comment?.html_url || `${base}/${op[1] ? 'pulls' : 'issues'}/${number}`
+      return line(op[0], target, url, Number(number) || 0, op[1] ? 'pr' : 'issue')
     }
     const ref = branchOf(one.ref_name)
     switch (one.op_type) {

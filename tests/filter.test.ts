@@ -18,6 +18,11 @@ const ITEMS: Item[] = [
   item(5, { status: 'todo', roles: ['author'], assignees: ['bob'] }),
 ]
 
+test('focus keeps a followed item even when nobody is assigned', async () => {
+  const followed = item(6, { status: 'tobeassigned', roles: ['following'], assignees: [] })
+  expect(applyFilter([...ITEMS, followed], VIEWS.focus).map(one => one.number)).toEqual([4, 1, 2, 6])
+})
+
 test('focus keeps what is mine to do, most urgent first', async () => {
   expect(applyFilter(ITEMS, VIEWS.focus).map(one => one.number)).toEqual([4, 1, 2])
 })

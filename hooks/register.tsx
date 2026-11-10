@@ -9,7 +9,7 @@ import { getCheckoutMap } from './checkouts'
 import { applyFilter, getActiveView, getAge, getStatusCounts, STATUS_ORDER, toggle, VIEWS } from './filter'
 import type { ViewName } from './filter'
 import { itemKey } from './model'
-import type { Activity, Followed, Forge, Item, Page, Role, Status } from './model'
+import type { Activity, Followed, FollowedItem, Forge, Item, Page, Role, Status } from './model'
 import { refresh } from './refresh'
 
 const PANE = 'forge-desk'
@@ -18,7 +18,9 @@ const MAX_ROWS = 200
 const LIST_KEY = 'items-cache-3'
 const REFRESH_MS = 5 * 60 * 1000
 const FOLLOWED_KEY = 'followed-1'
-const ACTIVITY_KEY = 'activity-cache-1'
+const FOLLOWED_ITEMS_KEY = 'followed-items-1'
+// Bumped when a feed line gained its issue or PR number: an unchanged GitHub feed is never read again.
+const ACTIVITY_KEY = 'activity-cache-2'
 const ACTIVITY_MS = 2 * 60 * 1000
 const MAX_EVENTS = 100
 // The browser board, under the home folder.
@@ -38,20 +40,21 @@ const meta = atom(
 
 const page = atom({ plugin: 'forge-desk', key: 'page' } as const, 'desk', { shape: 'page-1' })
 const followed = atom({ plugin: 'forge-desk', key: 'followed' } as const, [], { shape: 'followed-1' })
-const activities = atom({ plugin: 'forge-desk', key: 'activities' } as const, [], { shape: 'activities-1' })
+const activities = atom({ plugin: 'forge-desk', key: 'activities' } as const, [], { shape: 'activities-2' })
 const activityMeta = atom(
   { plugin: 'forge-desk', key: 'activityMeta' } as const,
   { refreshedAt: 0, errors: [], isLoading: false },
   { shape: 'activity-meta-1' },
 )
 const followDraft = atom({ plugin: 'forge-desk', key: 'followDraft' } as const, { forge: 'forgejo', repo: '' }, { shape: 'follow-draft-1' })
+const followedItems = atom({ plugin: 'forge-desk', key: 'followedItems' } as const, [], { shape: 'followed-items-1' })
 
 // One glyph each, so the switch and the board fit in two small buttons. The switch shows where it leads.
 const PAGE_ICON: Record<Page, string> = { desk: '📋', activities: '⚡' }
 const OTHER_PAGE: Record<Page, Page> = { desk: 'activities', activities: 'desk' }
 const BROWSER_ICON = '🌐'
 const ROLE_LABEL: Record<Role, string> = {
-  assignee: 'assigned to me', author: 'created by me', reviewer: 'review requested', mentioned: 'mentions me',
+  assignee: 'assigned to me', author: 'created by me', reviewer: 'review requested', mentioned: 'mentions me', following: 'followed',
 }
 const VIEW_LABEL: Record<ViewName, string> = { focus: 'Focus', unassigned: 'To assign', all: 'All' }
 const STATUS_COLOR: Record<Status, string> = {
@@ -67,6 +70,8 @@ type SavedActivity = { savedAt: number; cache: ActivityCache }
 // The automatic refreshes; a reload of the module starts new ones.
 let timer: Timer | undefined
 let activityTimer: Timer | undefined
+// A follow clicked while a refresh runs: that refresh did not read it, another one follows.
+let isReloadAgain = false
 
 const getBoardPath = async ($: EngineInterface): Promise<string> => `${await $.env.get('HOME')}/${BOARD_PATH}`
 
@@ -94,8 +99,13 @@ async function reload($: EngineInterface): Promise<{ count: number; errors: stri
     return { count: (await read($, items)).length, errors: ['a refresh is running: the pane updates when it ends'] }
   }
   await update($, meta, now => ({ ...now, isLoading: true }))
+  isReloadAgain = false
   try {
-    const found = await refresh($)
+    const found = await refresh($, await read($, followedItems))
+    if (found.closed.length > 0) {
+      const closed = new Set(found.closed.map(itemKey))
+      await saveFollowedItems($, (await read($, followedItems)).filter(one => !closed.has(itemKey(one))))
+    }
     const kept = (await read($, items)).filter(item => found.failed.includes(item.forge))
     const list = [...found.items, ...kept]
     await update($, items, () => list)
@@ -104,6 +114,7 @@ async function reload($: EngineInterface): Promise<{ count: number; errors: stri
     await update($, meta, () => ({ refreshedAt, errors: found.errors, isLoading: false }))
     // The pane holds the list either way: a board that fails to write waits for the next refresh.
     await writeBoard($).catch(error => $.ui.log(`forge-desk: board not written: ${String(error)}`, { to: 'debug' }))
+    if (isReloadAgain) void reload($)
 
     return { count: list.length, errors: found.errors }
   } catch (error) {
@@ -111,6 +122,34 @@ async function reload($: EngineInterface): Promise<{ count: number; errors: stri
 
     return { count: 0, errors: [String(error)] }
   }
+}
+
+async function saveFollowedItems($: EngineInterface, list: FollowedItem[]): Promise<void> {
+  await update($, followedItems, () => list)
+  await $.store.set(FOLLOWED_ITEMS_KEY, list)
+}
+
+/** Follows the issue or PR `event` is about, then shows the desk's Focus view, where it lands at the refresh. */
+async function followItem($: EngineInterface, event: Activity): Promise<void> {
+  const one: FollowedItem = { forge: event.forge, repo: event.repo, number: event.number }
+  const list = await read($, followedItems)
+  if (!list.some(other => itemKey(other) === itemKey(one))) await saveFollowedItems($, [...list, one])
+  await update($, filter, () => VIEWS.focus)
+  await update($, page, () => 'desk')
+  if ((await read($, meta)).isLoading) isReloadAgain = true
+  else await reload($)
+}
+
+/** Stops following `item`: it leaves the desk unless another role keeps it there. */
+async function unfollowItem($: EngineInterface, item: Item): Promise<void> {
+  await saveFollowedItems($, (await read($, followedItems)).filter(one => itemKey(one) !== itemKey(item)))
+  await update($, items, list =>
+    list.flatMap(one => {
+      if (itemKey(one) !== itemKey(item)) return [one]
+      const roles = one.roles.filter(role => role !== 'following')
+      return roles.length > 0 ? [{ ...one, roles }] : []
+    }),
+  )
 }
 
 /** Reads the feeds of the followed repositories; a poll that finds one running skips. */
@@ -170,6 +209,8 @@ export const register: Register = on => {
     await update($, activityMeta, now => ({ ...now, isLoading: false }))
     const kept = ((await $.store.get(FOLLOWED_KEY)) ?? []) as Followed[]
     await update($, followed, () => kept)
+    const keptItems = ((await $.store.get(FOLLOWED_ITEMS_KEY)) ?? []) as FollowedItem[]
+    await update($, followedItems, () => keptItems)
     const feed = (await $.store.get(ACTIVITY_KEY)) as SavedActivity | undefined
     if (feed && (await read($, activities)).length === 0) {
       const keys = new Set(kept.map(followKey))
@@ -237,6 +278,7 @@ export const register: Register = on => {
       const feed = await read($, activities)
       const feedState = await read($, activityMeta)
       const draft = await read($, followDraft)
+      const isFollowed = new Set((await read($, followedItems)).map(itemKey))
 
       return (
         <Box flexDirection="column" gap={1}>
@@ -288,6 +330,11 @@ export const register: Register = on => {
                   <Link href={event.url}>{event.target || event.repo}</Link>
                 </Box>
                 <Text dimColor wrap="truncate-end">{`${FORGE_LABEL[event.forge]} ${event.repo} · ${getAge(event.createdAt, now)}`}</Text>
+                {event.number > 0 && !isFollowed.has(itemKey(event)) && (
+                  <Button key={`follow-${event.id}`} plain onPress={() => void followItem($, event)}>
+                    {`Follow ${event.kind === 'pr' ? 'PR' : 'issue'}`}
+                  </Button>
+                )}
               </Box>
             ))}
           </Box>
@@ -402,6 +449,9 @@ export const register: Register = on => {
                     {ACTION_LABEL[action]}
                   </Button>
                 ))}
+                {item.roles.includes('following') && (
+                  <Button key={`unfollow:${itemKey(item)}`} plain onPress={() => void unfollowItem($, item)}>Unfollow</Button>
+                )}
               </Box>
             </Box>
           ))}

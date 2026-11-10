@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parseGithub, QUERY } from '../hooks/github'
+import { buildQuery, parseGithub, QUERY } from '../hooks/github'
 import type { GithubResponse } from '../hooks/github'
 
 const issue = (number: number, timeline: object[], updatedAt = '2026-10-29T10:00:00Z') => ({
@@ -63,7 +63,7 @@ test('a red check and a conflict are read off the PR', async () => {
 })
 
 test('a GraphQL error comes back as an error, not a crash', async () => {
-  expect(parseGithub({ errors: [{ message: 'Bad credentials' }] })).toEqual({ me: '', items: [], errors: ['Bad credentials'] })
+  expect(parseGithub({ errors: [{ message: 'Bad credentials' }] })).toEqual({ me: '', items: [], errors: ['Bad credentials'], closed: [] })
 })
 
 test('a mention is read off the thread, an answered one drops out', async () => {
@@ -87,4 +87,20 @@ test('a mention is read off the thread, an answered one drops out', async () => 
   expect(items.map(item => [item.number, item.mentionUrl])).toEqual([[3, 'c4'], [1, 'c1']])
   expect(items.find(item => item.number === 3)?.roles).toEqual(['author', 'mentioned'])
   expect(QUERY.match(/comments\(last: 50\)/g)).toHaveLength(2)
+})
+
+test('followed items are read by number; an open one joins the list, a closed one is reported', async () => {
+  const following = [{ forge: 'github', repo: 'acme/app', number: 4 }, { forge: 'github', repo: 'acme/lib', number: 5 }] as const
+  const query = buildQuery([...following])
+  expect(query.includes('follow0: repository(owner: "acme", name: "app") { issueOrPullRequest(number: 4)')).toBe(true)
+  expect(query.includes('follow1: repository(owner: "acme", name: "lib") { issueOrPullRequest(number: 5)')).toBe(true)
+
+  const open = { ...issue(4, []), state: 'OPEN', author: { login: 'bob' }, assignees: { nodes: [] }, comments: { nodes: [] }, body: '' }
+  const closed = { ...issue(5, []), state: 'CLOSED' }
+  const { items, closed: gone } = parseGithub({
+    data: { viewer: { login: 'me' }, follow0: { issueOrPullRequest: open }, follow1: { issueOrPullRequest: closed } },
+  } as unknown as GithubResponse, [...following])
+
+  expect(items.map(item => [item.number, item.roles])).toEqual([[4, ['following']]])
+  expect(gone).toEqual([following[1]])
 })

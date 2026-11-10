@@ -52,6 +52,13 @@ Follow a repository from the Activities page: pick the forge and write `owner/re
 its URL (the host decides the forge). The list is kept across sessions; `×` stops following.
 The forges' own "watch" is not used: on Forgejo everything is watched by default.
 
+An event about an issue or PR offers **Follow issue** / **Follow PR**: the item joins the desk with
+the `following` role and shows in Focus — also when nobody is assigned — and the pane switches to
+it. Followed items are read on every refresh (by number in the GitHub GraphQL call, one REST call
+each on Forgejo); their status is computed as for any other item, a PR you only follow counting as
+someone else's. **Unfollow** on the desk row drops it; an item found closed or merged leaves the
+list on its own. Nothing is changed on the forge.
+
 The feed is polled in the background every 2 minutes, one call per repository
 (`/repos/{repo}/events` through `gh`, `/repos/{repo}/activities/feeds` on Forgejo). GitHub calls
 carry the last ETag, so an unchanged feed answers 304, which does not count against the rate
@@ -64,8 +71,8 @@ Status: under development.
 The repository root is the plugin. Data layer: `hooks/github.ts` (one `gh api graphql` call, one
 search per clause), `hooks/forgejo.ts` (REST, one search per clause, one cached timeline call
 per issue, and per PR its detail, reviews and head-commit status), `hooks/status.ts` (whose move it is), `hooks/activities.ts` (the followed repositories' feeds). Pane: `hooks/register.tsx`, filters and views in
-`hooks/filter.ts` (Focus, the default: assigned to me, review requests and unanswered mentions,
-without `tobeassigned`). A mention is unanswered while no comment of mine follows it; items there
+`hooks/filter.ts` (Focus, the default: assigned to me, review requests, unanswered mentions and
+followed items). A mention is unanswered while no comment of mine follows it; items there
 only for an answered mention drop out.
 
 To load it in every session, name the repository in the `env` block of `~/.claude/settings.json`:

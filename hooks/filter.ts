@@ -4,9 +4,15 @@ export const STATUS_ORDER: Status[] = ['ready', 'review', 'mentioned', 'inprogre
 
 export type ViewName = 'focus' | 'unassigned' | 'all'
 
-// Ready-made filters, one click each in the pane.
+// Ready-made filters, one click each in the pane. Focus keeps a followed item even when nobody is on it;
+// otherwise tobeassigned reaches Focus only on an unassigned issue of mine whose mention I answered.
 export const VIEWS: Record<ViewName, Filter> = {
-  focus: { roles: ['assignee', 'reviewer', 'mentioned'], statuses: ['ready', 'review', 'mentioned', 'inprogress', 'todo', 'waiting', 'stalled'], forges: [], text: '' },
+  focus: {
+    roles: ['assignee', 'reviewer', 'mentioned', 'following'],
+    statuses: ['ready', 'review', 'mentioned', 'inprogress', 'todo', 'waiting', 'stalled', 'tobeassigned'],
+    forges: [],
+    text: '',
+  },
   unassigned: { roles: ['author'], statuses: ['tobeassigned'], forges: [], text: '' },
   all: { roles: [], statuses: [], forges: [], text: '' },
 }
