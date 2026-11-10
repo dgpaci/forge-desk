@@ -5,8 +5,9 @@ export type Kind = 'issue' | 'pr'
 export type Status = 'ready' | 'review' | 'mentioned' | 'inprogress' | 'todo' | 'waiting' | 'stalled' | 'tobeassigned'
 // 'required': branch protection wants an approval no one has given yet (GitHub only).
 export type ReviewDecision = 'approved' | 'changes' | 'required' | 'none'
-// Why the item is in the list: the clauses of the selection that matched it.
-export type Role = 'assignee' | 'author' | 'reviewer' | 'mentioned'
+// Why the item is in the list: the clauses of the selection that matched it, or
+// `following` for an item followed from the Activities page.
+export type Role = 'assignee' | 'author' | 'reviewer' | 'mentioned' | 'following'
 
 // One open issue or PR, normalised across forges. `hasCommits` and
 // `hasLinkedPr` come from the issue timeline; for PRs they stay false.
@@ -49,8 +50,12 @@ export type Meta = { refreshedAt: number; errors: string[]; isLoading: boolean }
 // A repository whose activity the Activities page shows.
 export type Followed = { forge: Forge; repo: string }
 
+// An issue or PR followed from the Activities page: the desk reads it on every refresh.
+export type FollowedItem = { forge: Forge; repo: string; number: number }
+
 // One event on a followed repository, normalised across forges: `actor` did
-// `verb` on `target` (an issue or PR title, a branch), `url` opens it.
+// `verb` on `target` (an issue or PR title, a branch), `url` opens it. `number` and
+// `kind` name the issue or PR the event is about; 0 and '' when it is about none.
 export type Activity = {
   id: string
   forge: Forge
@@ -60,6 +65,8 @@ export type Activity = {
   target: string
   url: string
   createdAt: string
+  number: number
+  kind: Kind | ''
 }
 
 // The two pages of the pane.
@@ -77,6 +84,7 @@ declare module 'claude-code' {
       activities: Shaped<Activity[]>
       activityMeta: Shaped<Meta>
       followDraft: Shaped<Followed>
+      followedItems: Shaped<FollowedItem[]>
     }
   }
 }

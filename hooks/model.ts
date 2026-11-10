@@ -1,6 +1,6 @@
 import type { Item, Role } from '../types'
 
-export type { Activity, Filter, Followed, Forge, Item, Kind, Meta, Page, ReviewDecision, Role, Status } from '../types'
+export type { Activity, Filter, Followed, FollowedItem, Forge, Item, Kind, Meta, Page, ReviewDecision, Role, Status } from '../types'
 
 export type Clause = 'assigned' | 'created' | 'prAssigned' | 'prCreated' | 'reviews' | 'mentioned'
 

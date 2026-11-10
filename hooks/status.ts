@@ -6,7 +6,7 @@ export const STALE_MS = 7 * 24 * 60 * 60 * 1000
  * Computes the status of an item for `me` at time `now` (ms since epoch): whose
  * move it is. Mine: review (requested from me), mentioned (a mention of me
  * still unanswered), ready (green, mergeable, approved or out of draft with no review asked nor required: merge it), inprogress, todo. Others': waiting, stalled once the
- * item has had no update for STALE_MS. My own idle work stays inprogress.
+ * item has had no update for STALE_MS. My own idle work stays inprogress. A PR I only follow is others' work.
  */
 export function getStatus(item: RawItem, me: string, now: number): Status {
   const isStale = now - Date.parse(item.updatedAt) > STALE_MS
@@ -16,7 +16,7 @@ export function getStatus(item: RawItem, me: string, now: number): Status {
   if (item.kind === 'pr') {
     if (item.roles.includes('reviewer') && item.author !== me) return 'review'
     if (item.mentionUrl) return 'mentioned'
-    if (isOthers) return onOthers
+    if (isOthers || item.roles.every(role => role === 'following')) return onOthers
     if (item.isDraft) return 'inprogress'
     const isClean = item.isCiGreen && item.isMergeable
     // One approval is enough to merge: still-pending requests to other reviewers do not hold it back.

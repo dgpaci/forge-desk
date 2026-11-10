@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import { addMatch, CLAUSE_ROLE, getPendingMention, isAnsweredMention, NO_REVIEW } from './model'
-import type { Clause, RawItem, ReviewState } from './model'
+import type { Clause, FollowedItem, RawItem, ReviewState, Role } from './model'
 
 // One search per clause of the selection, merged client-side: the plain
 // search syntax is sure to work in GraphQL, the boolean one is not. `mentioned`
@@ -18,7 +18,7 @@ export const SEARCHES: Record<Clause, string> = {
 // The thread, read only where a mention is looked for.
 const THREAD = 'body comments(last: 50) { nodes { url body author { login } } }'
 
-const node = (extra: string): string => `nodes { __typename
+const fields = (extra: string): string => `__typename
   ... on Issue { ${extra} number title url updatedAt repository { nameWithOwner } author { login }
     assignees(first: 10) { nodes { login } }
     timelineItems(first: 100, itemTypes: [REFERENCED_EVENT, CONNECTED_EVENT, CROSS_REFERENCED_EVENT]) {
@@ -27,11 +27,27 @@ const node = (extra: string): string => `nodes { __typename
   ... on PullRequest { ${extra} number title url updatedAt isDraft reviewDecision mergeable repository { nameWithOwner }
     author { login } assignees(first: 10) { nodes { login } }
     reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
-    commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } }`
+    commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }`
 
-export const QUERY = `query { viewer { login } ${Object.entries(SEARCHES)
-  .map(([alias, q]) => `${alias}: search(type: ISSUE, first: 100, query: "${q}") { issueCount ${node(alias === 'mentioned' ? THREAD : '')} }`)
-  .join(' ')} }`
+const SEARCH_QUERY = Object.entries(SEARCHES)
+  .map(([alias, q]) => `${alias}: search(type: ISSUE, first: 100, query: "${q}") { issueCount nodes { ${fields(alias === 'mentioned' ? THREAD : '')} } }`)
+  .join(' ')
+
+// The alias under which the query reads the followed item at `at`.
+const followAlias = (at: number): string => `follow${at}`
+
+/** One search per clause, then each followed item by number, its state and thread included. */
+export function buildQuery(following: FollowedItem[] = []): string {
+  const followed = following.map((one, at) => {
+    const [owner, name] = one.repo.split('/')
+    return `${followAlias(at)}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) ` +
+      `{ issueOrPullRequest(number: ${one.number}) { ${fields(`state ${THREAD}`)} } }`
+  })
+
+  return `query { viewer { login } ${[SEARCH_QUERY, ...followed].join(' ')} }`
+}
+
+export const QUERY = buildQuery()
 
 type Login = { login: string } | null
 type TimelineNode = {
@@ -57,14 +73,16 @@ type Node = {
   commits?: { nodes: { commit: { statusCheckRollup: { state: string } | null } }[] }
   body?: string
   comments?: { nodes: { url: string; body: string; author: Login }[] }
+  state?: string
 }
 type Search = { issueCount: number; nodes: Node[] }
 export type GithubResponse = {
-  data?: { viewer: { login: string } } & Record<string, Search | { login: string }>
+  data?: { viewer: { login: string } } & Record<string, Search | { login: string } | { issueOrPullRequest: Node | null } | null>
   errors?: { message: string }[]
 }
 
-export type SourceResult = { me: string; items: RawItem[]; errors: string[] }
+// `closed` holds the followed items the forge found closed or merged: they leave the followed list.
+export type SourceResult = { me: string; items: RawItem[]; errors: string[]; closed: FollowedItem[] }
 
 const isLinkingPr = (event: TimelineNode): boolean =>
   event.__typename === 'ConnectedEvent' ||
@@ -101,7 +119,7 @@ function mentionOf(node: Node, me: string): string {
   return getPendingMention(posts, me)
 }
 
-function toItem(node: Node, clause: Clause, me: string): RawItem {
+function toItem(node: Node, role: Role, me: string): RawItem {
   const timeline = node.timelineItems?.nodes ?? []
 
   return {
@@ -119,15 +137,15 @@ function toItem(node: Node, clause: Clause, me: string): RawItem {
     hasCommits: timeline.some(event => Boolean(event.commit)),
     hasLinkedPr: timeline.some(isLinkingPr),
     mentionUrl: mentionOf(node, me),
-    roles: [CLAUSE_ROLE[clause]],
+    roles: [role],
   }
 }
 
-/** Turns the GraphQL answer into unique items, newest first. */
-export function parseGithub(response: GithubResponse): SourceResult {
+/** Turns the GraphQL answer into unique items, newest first; `following` is what the query asked for. */
+export function parseGithub(response: GithubResponse, following: FollowedItem[] = []): SourceResult {
   const errors = (response.errors ?? []).map(error => error.message)
   const data = response.data
-  if (!data) return { me: '', items: [], errors: errors.length ? errors : ['no data'] }
+  if (!data) return { me: '', items: [], errors: errors.length ? errors : ['no data'], closed: [] }
 
   const byUrl = new Map<string, RawItem>()
   for (const alias of Object.keys(SEARCHES) as Clause[]) {
@@ -138,26 +156,34 @@ export function parseGithub(response: GithubResponse): SourceResult {
     }
     for (const node of search.nodes) {
       if (node?.__typename === 'Issue' || node?.__typename === 'PullRequest') {
-        addMatch(byUrl, node.url, toItem(node, alias, data.viewer.login))
+        addMatch(byUrl, node.url, toItem(node, CLAUSE_ROLE[alias], data.viewer.login))
       }
     }
   }
+  // A followed item the forge does not find stays followed: the error says why.
+  const closed: FollowedItem[] = []
+  following.forEach((one, at) => {
+    const node = (data[followAlias(at)] as { issueOrPullRequest: Node | null } | null)?.issueOrPullRequest
+    if (!node) return
+    if (node.state !== 'OPEN') closed.push(one)
+    else addMatch(byUrl, node.url, toItem(node, 'following', data.viewer.login))
+  })
   const items = [...byUrl.values()].filter(item => !isAnsweredMention(item)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 
-  return { me: data.viewer.login, items, errors }
+  return { me: data.viewer.login, items, errors, closed }
 }
 
-/** Queries GitHub through `gh`, which holds the user's auth. */
-export async function fetchGithub($: EngineInterface): Promise<SourceResult> {
+/** Queries GitHub through `gh`, which holds the user's auth; `following` holds the GitHub items followed. */
+export async function fetchGithub($: EngineInterface, following: FollowedItem[] = []): Promise<SourceResult> {
   try {
     const { exitCode, stdout, stderr } = await $.process.run(
-      ['gh', 'api', 'graphql', '-f', `query=${QUERY}`],
+      ['gh', 'api', 'graphql', '-f', `query=${buildQuery(following)}`],
       { timeoutMs: 60000 },
     )
-    if (exitCode !== 0 && !stdout) return { me: '', items: [], errors: [stderr.trim().split('\n')[0] ?? 'gh failed'] }
+    if (exitCode !== 0 && !stdout) return { me: '', items: [], errors: [stderr.trim().split('\n')[0] ?? 'gh failed'], closed: [] }
 
-    return parseGithub(JSON.parse(stdout) as GithubResponse)
+    return parseGithub(JSON.parse(stdout) as GithubResponse, following)
   } catch (error) {
-    return { me: '', items: [], errors: [String(error)] }
+    return { me: '', items: [], errors: [String(error)], closed: [] }
   }
 }
