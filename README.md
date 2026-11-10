@@ -9,10 +9,10 @@ Statuses say whose move it is, most urgent first:
 
 | Status | Meaning |
 |---|---|
-| `ready` | your PR is approved, CI green, no conflicts: merge it |
+| `ready` | your PR has CI green and no conflicts, and is approved — or out of draft with no review asked nor required: merge it |
 | `review` | someone else's PR, review requested from you |
 | `mentioned` | someone mentioned you (`@you`) and no comment of yours follows it: answer it |
-| `inprogress` | your move: draft PR, changes requested, PR with no reviewer asked, approved PR with red CI or conflicts; issue with a commit or a linked PR. Idle work of yours stays here |
+| `inprogress` | your move: draft PR, changes requested, PR whose required review was never asked, PR with red CI or conflicts; issue with a commit or a linked PR. Idle work of yours stays here |
 | `todo` | issue assigned to you, no commit and no linked PR |
 | `waiting` | others' move: PR with a review pending from someone else, item assigned to someone else |
 | `stalled` | waiting with no update for 7+ days: nudge it |
