@@ -10,6 +10,17 @@ const issue = (number: number, extra: Partial<ForgejoIssue> = {}): ForgejoIssue 
 })
 const key = (number: number) => `forgejo:acme/app#${number}`
 
+test('a followed item joins the list with the following role, beside its other roles', async () => {
+  const items = mergeForgejo(
+    { created: [issue(1)] },
+    {},
+    {},
+    [issue(1), issue(2, { user: { login: 'bob' }, assignees: [] })],
+  )
+
+  expect(items.map(item => [item.number, item.roles])).toEqual([[2, ['following']], [1, ['author', 'following']]])
+})
+
 test('assigned issues with a linked PR and draft review requests drop out', async () => {
   const items = mergeForgejo(
     {

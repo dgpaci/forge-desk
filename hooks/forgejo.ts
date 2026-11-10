@@ -2,7 +2,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { SourceResult } from './github'
 import { addMatch, CLAUSE_ROLE, getPendingMention, isAnsweredMention, itemKey, NO_REVIEW } from './model'
-import type { Clause, RawItem, ReviewState } from './model'
+import type { Clause, FollowedItem, RawItem, ReviewState, Role } from './model'
 
 export const HOST = 'hub.genro.com'
 const API = `https://${HOST}/api/v1`
@@ -31,6 +31,7 @@ export type ForgejoIssue = {
   assignees: { login: string }[] | null
   repository: { full_name: string }
   pull_request: { draft?: boolean } | null
+  state?: string
 }
 export type ForgejoPull = {
   mergeable: boolean
@@ -86,7 +87,7 @@ export function reviewOf(pull: ForgejoPull, reviews: ForgejoReview[] | null, ciS
   }
 }
 
-function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
+function toItem(issue: ForgejoIssue, role: Role = 'author'): RawItem {
   return {
     forge: 'forgejo',
     repo: issue.repository.full_name,
@@ -102,36 +103,39 @@ function toItem(issue: ForgejoIssue, clause: Clause = 'created'): RawItem {
     hasCommits: false,
     hasLinkedPr: false,
     mentionUrl: '',
-    roles: [CLAUSE_ROLE[clause]],
+    roles: [role],
   }
 }
 
 /**
- * Merges the clause lists into unique items, newest first. Assigned issues
- * with a linked PR drop out, as `-linked:pr` does on GitHub; drafts drop out
- * of review requests only, answered mentions out of the list. `flags` holds
- * the timeline of every issue and mentioning PR, `reviews` the review state of
- * every PR.
+ * Merges the clause lists into unique items, newest first, then the open
+ * `followed` items. Assigned issues with a linked PR drop out, as `-linked:pr`
+ * does on GitHub; drafts drop out of review requests only, answered mentions
+ * out of the list. `flags` holds the timeline of every issue and of every PR
+ * mentioning me or followed, `reviews` the review state of every PR.
  */
 export function mergeForgejo(
   lists: Partial<Record<Clause, ForgejoIssue[]>>,
   flags: Record<string, Flags>,
   reviews: Record<string, ReviewState> = {},
+  followed: ForgejoIssue[] = [],
 ): RawItem[] {
   const byKey = new Map<string, RawItem>()
-  for (const clause of Object.keys(SEARCHES) as Clause[]) {
-    for (const issue of lists[clause] ?? []) {
-      const item = toItem(issue, clause)
-      const key = itemKey(item)
-      const found =
-        item.kind === 'issue'
-          ? { ...item, ...flags[key] }
-          : { ...item, ...reviews[key], mentionUrl: flags[key]?.mentionUrl ?? '' }
-      if (clause === 'assigned' && found.hasLinkedPr) continue
-      if (clause === 'reviews' && found.isDraft) continue
-      addMatch(byKey, key, found)
-    }
+  const add = (issue: ForgejoIssue, role: Role, clause?: Clause) => {
+    const item = toItem(issue, role)
+    const key = itemKey(item)
+    const found =
+      item.kind === 'issue'
+        ? { ...item, ...flags[key] }
+        : { ...item, ...reviews[key], mentionUrl: flags[key]?.mentionUrl ?? '' }
+    if (clause === 'assigned' && found.hasLinkedPr) return
+    if (clause === 'reviews' && found.isDraft) return
+    addMatch(byKey, key, found)
   }
+  for (const clause of Object.keys(SEARCHES) as Clause[]) {
+    for (const issue of lists[clause] ?? []) add(issue, CLAUSE_ROLE[clause], clause)
+  }
+  for (const issue of followed) add(issue, 'following')
 
   return [...byKey.values()].filter(item => !isAnsweredMention(item)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
@@ -181,18 +185,45 @@ async function searchClause($: EngineInterface, token: string, query: string): P
 }
 
 /**
- * Queries Forgejo, reads the timeline of each issue whose updated_at changed
+ * Reads each followed item; those found closed go to `closed`, those that fail
+ * stay followed with an error.
+ */
+async function readFollowed(
+  $: EngineInterface,
+  token: string,
+  following: FollowedItem[],
+  errors: string[],
+): Promise<{ open: ForgejoIssue[]; closed: FollowedItem[] }> {
+  const open: ForgejoIssue[] = []
+  const closed: FollowedItem[] = []
+  await inBatches(following, async one => {
+    try {
+      const issue = await getJson<ForgejoIssue>($, token, `/repos/${one.repo}/issues/${one.number}`)
+      if (issue.state === 'open') open.push(issue)
+      else closed.push(one)
+    } catch (error) {
+      errors.push(`${one.repo}#${one.number}: ${String(error)}`)
+    }
+  })
+
+  return { open, closed }
+}
+
+/**
+ * Queries Forgejo and reads the `following` items, reads the timeline of each
+ * issue (and of each PR mentioning me or followed) whose updated_at changed
  * since `cache` and the review state of every PR, which CI can change without
  * touching updated_at. Resolves the result and the cache to keep.
  */
 export async function fetchForgejo(
   $: EngineInterface,
   cache: TimelineCache,
+  following: FollowedItem[] = [],
 ): Promise<SourceResult & { cache: TimelineCache }> {
   const errors: string[] = []
   try {
     const token = await readToken($)
-    if (!token) return { me: '', items: [], errors: [`no ${HOST} token: run fj auth login`], cache }
+    if (!token) return { me: '', items: [], errors: [`no ${HOST} token: run fj auth login`], cache, closed: [] }
 
     const me = (await getJson<{ login: string }>($, token, '/user')).login
     const lists: Partial<Record<Clause, ForgejoIssue[]>> = {}
@@ -206,14 +237,17 @@ export async function fetchForgejo(
       }),
     )
 
-    // Every issue has its timeline read; a PR only when it mentions me.
+    const followed = await readFollowed($, token, following, errors)
+
+    // Every issue has its timeline read; a PR only when it mentions me or is followed.
     const threads = new Map<string, ForgejoIssue>()
     const pulls = new Map<string, ForgejoIssue>()
-    for (const [clause, found] of Object.entries(lists) as [Clause, ForgejoIssue[]][]) {
+    const sources: [Clause | 'following', ForgejoIssue[]][] = [...(Object.entries(lists) as [Clause, ForgejoIssue[]][]), ['following', followed.open]]
+    for (const [clause, found] of sources) {
       for (const issue of found) {
         const key = itemKey(toItem(issue))
         if (issue.pull_request) pulls.set(key, issue)
-        if (!issue.pull_request || clause === 'mentioned') threads.set(key, issue)
+        if (!issue.pull_request || clause === 'mentioned' || clause === 'following') threads.set(key, issue)
       }
     }
     const kept: TimelineCache = {}
@@ -241,8 +275,8 @@ export async function fetchForgejo(
       }
     })
 
-    return { me, items: mergeForgejo(lists, kept, reviews), errors, cache: kept }
+    return { me, items: mergeForgejo(lists, kept, reviews, followed.open), errors, cache: kept, closed: followed.closed }
   } catch (error) {
-    return { me: '', items: [], errors: [...errors, String(error)], cache }
+    return { me: '', items: [], errors: [...errors, String(error)], cache, closed: [] }
   }
 }

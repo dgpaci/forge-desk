@@ -21,16 +21,16 @@ test('a repository is named as owner/repo or by its URL, whose host decides the 
 
 test('GitHub events read as feed lines, PRs linked by number when the payload is trimmed', async () => {
   const merged = fromGithub(ghEvent('1', 'PullRequestEvent', { action: 'closed', pull_request: { number: 7, merged: true } }))
-  expect(merged).toMatchObject({ id: 'github:1', actor: 'ann', verb: 'merged PR', target: '#7', url: 'https://github.com/acme/app/pull/7' })
+  expect(merged).toMatchObject({ id: 'github:1', actor: 'ann', verb: 'merged PR', target: '#7', url: 'https://github.com/acme/app/pull/7', number: 7, kind: 'pr' })
 
   const push = fromGithub(ghEvent('2', 'PushEvent', { ref: 'refs/heads/develop', before: 'a'.repeat(40), head: 'b'.repeat(40) }))
-  expect(push).toMatchObject({ verb: 'pushed to', target: 'develop', url: `https://github.com/acme/app/compare/${'a'.repeat(12)}...${'b'.repeat(12)}` })
+  expect(push).toMatchObject({ verb: 'pushed to', target: 'develop', url: `https://github.com/acme/app/compare/${'a'.repeat(12)}...${'b'.repeat(12)}`, number: 0, kind: '' })
 
   const comment = fromGithub(ghEvent('3', 'IssueCommentEvent', {
     issue: { number: 5, title: 'Broken', html_url: 'https://github.com/acme/app/pull/5', pull_request: {} },
     comment: { html_url: 'https://github.com/acme/app/pull/5#c1' },
   }))
-  expect(comment).toMatchObject({ verb: 'commented on PR', target: '#5 Broken', url: 'https://github.com/acme/app/pull/5#c1' })
+  expect(comment).toMatchObject({ verb: 'commented on PR', target: '#5 Broken', url: 'https://github.com/acme/app/pull/5#c1', number: 5, kind: 'pr' })
 
   expect(fromGithub(ghEvent('4', 'PullRequestReviewEvent', { pull_request: { number: 9 }, review: { state: 'approved', html_url: 'u' } })).verb)
     .toBe('approved PR')
@@ -39,11 +39,11 @@ test('GitHub events read as feed lines, PRs linked by number when the payload is
 test('Forgejo activities read as feed lines, in both content formats', async () => {
   expect(fromForgejo(fjActivity(1, 'merge_pull_request', '["522","Login opens the convegno window"]'))).toMatchObject({
     id: 'forgejo:1', actor: 'bob', verb: 'merged PR', target: '#522 Login opens the convegno window',
-    url: 'https://hub.genro.com/acme/lib/pulls/522',
+    url: 'https://hub.genro.com/acme/lib/pulls/522', number: 522, kind: 'pr',
   })
   expect(fromForgejo(fjActivity(2, 'create_issue', '527|New day in the programme')).target).toBe('#527 New day in the programme')
   const comment = fromForgejo(fjActivity(3, 'comment_issue', '["325","A long comment"]', { comment: { html_url: 'https://hub.genro.com/acme/lib/issues/325#c9' } }))
-  expect(comment).toMatchObject({ verb: 'commented on issue', target: '#325', url: 'https://hub.genro.com/acme/lib/issues/325#c9' })
+  expect(comment).toMatchObject({ verb: 'commented on issue', target: '#325', url: 'https://hub.genro.com/acme/lib/issues/325#c9', number: 325, kind: 'issue' })
   const push = fromForgejo(fjActivity(4, 'commit_repo', '{"Commits":[],"CompareURL":"acme/lib/compare/a...b"}', { ref_name: 'refs/heads/develop' }))
   expect(push).toMatchObject({ verb: 'pushed to', target: 'develop', url: 'https://hub.genro.com/acme/lib/compare/a...b' })
 })
@@ -60,7 +60,7 @@ test('an unchanged GitHub feed is not read again, a failing repository keeps its
   const lib = fromForgejo(fjActivity(2, 'create_issue', '["2","lib one"]'))
   mock.store(on, {
     'followed-1': [{ forge: 'github', repo: 'acme/app' }, { forge: 'forgejo', repo: 'acme/lib' }],
-    'activity-cache-1': {
+    'activity-cache-2': {
       savedAt: 0,
       cache: { 'github:acme/app': { etag: 'W/"e"', activities: [old] }, 'forgejo:acme/lib': { etag: '', activities: [lib] } },
     },

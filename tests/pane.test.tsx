@@ -133,3 +133,51 @@ test('the Activities page follows a repository and shows its feed', async ($, on
   expect(await ui.find({ type: 'Text', text: /No repository followed/ })).toBeUndefined()
   await ui.unmount()
 })
+
+test('Follow on an event puts its issue on the Focus view, Unfollow takes it off', async ($, on) => {
+  mock.store(on)
+  mock.clock(on)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('command.register', () => ({ value: { command: 'forge-desk' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/h' }))
+  on('fs.read', () => ({ value: JSON.stringify({ hosts: { 'hub.genro.com': { token: 't' } } }) }))
+  on('fs.write', () => ({ value: undefined }))
+  on('process.run', () => ({
+    value: { exitCode: 1, stdout: '', stderr: 'gh: offline', isStdoutTruncated: false, isStderrTruncated: false },
+  }))
+  on('http.fetch', (_, e) => {
+    const reply = (body: unknown) => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } })
+    if (e.url.endsWith('/repos/acme/lib')) return reply({ full_name: 'acme/lib' })
+    if (e.url.includes('/repos/acme/lib/activities/feeds')) {
+      return reply([{ id: 7, op_type: 'create_issue', act_user: { login: 'bob' }, repo: { full_name: 'acme/lib' },
+        ref_name: '', content: '["4","title followed"]', comment: null, created: '2026-11-03T10:00:00Z' },
+      { id: 8, op_type: 'commit_repo', act_user: { login: 'bob' }, repo: { full_name: 'acme/lib' },
+        ref_name: 'refs/heads/main', content: '{}', comment: null, created: '2026-11-03T09:00:00Z' }])
+    }
+    if (e.url.endsWith('/repos/acme/lib/issues/4')) {
+      return reply(issue(4, { title: 'title followed', user: { login: 'bob' }, assignees: [], repository: { full_name: 'acme/lib' }, state: 'open' }))
+    }
+    if (e.url.endsWith('/user')) return reply({ login: 'me' })
+    return reply([])
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'page' })
+  await ui.input({ key: 'follow-repo', text: 'acme/lib' })
+  // The push names no issue: only the issue event offers Follow.
+  expect((await ui.findAll({ type: 'Button', text: /^Follow (issue|PR)$/ })).length).toBe(1)
+
+  await ui.press({ key: 'follow-forgejo:7' })
+  const titles = async () => (await ui.findAll({ type: 'Link' })).map(link => link.text.slice(link.text.indexOf('title')))
+  expect(await titles()).toEqual(['title followed'])
+  expect((await ui.find({ type: 'Button', text: 'Unfollow' }))?.text).toBe('Unfollow')
+
+  await ui.press({ key: 'unfollow:forgejo:acme/lib#4' })
+  expect(await titles()).toEqual([])
+  // Unfollowed, the event offers Follow again.
+  await ui.press({ key: 'page' })
+  expect((await ui.findAll({ type: 'Button', text: 'Follow issue' })).length).toBe(1)
+  await ui.unmount()
+})

@@ -137,7 +137,7 @@ td.actions a { margin-right: 10px; white-space: nowrap; }
 // The pane's filters, applied in the page; the filter lives in the URL hash so a reload keeps it.
 const SCRIPT = `
 const data = JSON.parse(document.getElementById('data').textContent)
-const ROLE_LABEL = { assignee: 'assigned to me', author: 'created by me', reviewer: 'review requested', mentioned: 'mentions me' }
+const ROLE_LABEL = { assignee: 'assigned to me', author: 'created by me', reviewer: 'review requested', mentioned: 'mentions me', following: 'followed' }
 const VIEW_LABEL = { focus: 'Focus', unassigned: 'To assign', all: 'All' }
 const FORGE_LABEL = { github: 'GH', forgejo: 'FJ' }
 let filter = data.views.focus
