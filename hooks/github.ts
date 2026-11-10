@@ -90,7 +90,7 @@ const isLinkingPr = (event: TimelineNode): boolean =>
     event.source?.__typename === 'PullRequest' &&
     event.willCloseTarget === true)
 
-const DECISION: Record<string, ReviewState['reviewDecision']> = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes' }
+const DECISION: Record<string, ReviewState['reviewDecision']> = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'required' }
 
 // UNKNOWN mergeability is still being computed: only a known conflict counts. No checks at all is green.
 function reviewOf(node: Node): ReviewState {

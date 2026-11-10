@@ -3,7 +3,8 @@ export type Kind = 'issue' | 'pr'
 // Whose move it is, most urgent first: mine (ready, review, mentioned, inprogress, todo), others'
 // (waiting, stalled), nobody's yet (tobeassigned).
 export type Status = 'ready' | 'review' | 'mentioned' | 'inprogress' | 'todo' | 'waiting' | 'stalled' | 'tobeassigned'
-export type ReviewDecision = 'approved' | 'changes' | 'none'
+// 'required': branch protection wants an approval no one has given yet (GitHub only).
+export type ReviewDecision = 'approved' | 'changes' | 'required' | 'none'
 // Why the item is in the list: the clauses of the selection that matched it, or
 // `following` for an item followed from the Activities page.
 export type Role = 'assignee' | 'author' | 'reviewer' | 'mentioned' | 'following'
