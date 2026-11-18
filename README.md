@@ -3,6 +3,9 @@
 A side pane for the Claude Desktop Code tab that lists, in one grid, your open issues and pull
 requests across **GitHub** and **Forgejo** (`hub.genro.com`).
 
+New here? Read the [guide](docs/guide.md): what the statuses mean and a worked flow from
+assignment to merge, with screenshots.
+
 Columns: forge, repo, title, last update, assignee, status.
 
 Statuses say whose move it is, most urgent first:
