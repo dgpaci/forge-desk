@@ -1,0 +1,11 @@
+site_name: forge-desk
+site_description: One grid of your open issues and PRs across GitHub and Forgejo, in the Claude Desktop Code tab.
+repo_url: https://github.com/dgpaci/forge-desk
+edit_uri: edit/main/docs/
+theme:
+  name: readthedocs
+nav:
+  - Home: index.md
+  - Guide: guide.md
+exclude_docs: |
+  requirements.txt
