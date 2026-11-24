@@ -1,5 +1,7 @@
 # forge-desk
 
+[![Documentation Status](https://readthedocs.org/projects/forge-desk/badge/?version=latest)](https://forge-desk.readthedocs.io/en/latest/)
+
 A side pane for the Claude Desktop Code tab that lists, in one grid, your open issues and pull
 requests across **GitHub** and **Forgejo** (`hub.genro.com`).
 
