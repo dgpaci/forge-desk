@@ -76,6 +76,24 @@ is how a PM keeps an eye on an issue handed to a developer.
 
 ![Activities](images/activities.png)
 
+## Time log
+
+forge-desk records how long development sessions are active, so the time can be summed per issue
+by tools that read it (p2kit's timesheets). There is no timer: a session's active time is its
+turns, from the prompt to the end of the answer, plus the gap before the next prompt when it is
+15 minutes or less; a longer gap is idle and left out. Subagents' turns add nothing.
+
+Each turn appends one line to `~/.claude/timelog/<yyyy-mm-dd>.jsonl`, split at midnight:
+
+```json
+{"start":"2026-11-26T10:02:00+01:00","end":"2026-11-26T10:08:00+01:00","remote":"hub.genro.com/acme/app","ref":"#7","kind":"dev","source":"forge-desk"}
+```
+
+`remote` is the checkout's origin, so worktrees of one repository count together. `ref` is the
+issue or PR a session was opened on from the desk (Solve, Review, Work on it, …), when it runs in
+that item's repository; any other session has `null`. Sessions outside a repository with a remote
+are not logged. The lines are contiguous intervals: sum them, never merge them by hand.
+
 ## With p2kit
 
 forge-desk is the desk of **one person**: what is on my plate. [p2kit](https://github.com/dgpaci/p2kit)
