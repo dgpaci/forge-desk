@@ -30,8 +30,8 @@ test('items are merged across clauses and their timeline read', async () => {
       assigned: search([issue(1, [{ __typename: 'ReferencedEvent', commit: { oid: 'abc' } }])]),
       created: search([
         issue(1, [{ __typename: 'ReferencedEvent', commit: { oid: 'abc' } }]),
-        issue(2, [{ __typename: 'CrossReferencedEvent', willCloseTarget: true, source: { __typename: 'PullRequest' } }], '2026-10-30T10:00:00Z'),
-        issue(3, [{ __typename: 'CrossReferencedEvent', willCloseTarget: false, source: { __typename: 'PullRequest' } }]),
+        issue(2, [{ __typename: 'CrossReferencedEvent', source: { __typename: 'PullRequest' } }], '2026-10-30T10:00:00Z'),
+        issue(3, [{ __typename: 'CrossReferencedEvent', source: { __typename: 'Issue' } }]),
       ], 120),
       prAssigned: search([]),
       prCreated: search([pr]),
