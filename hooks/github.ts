@@ -23,7 +23,7 @@ const fields = (extra: string): string => `__typename
     assignees(first: 10) { nodes { login } }
     timelineItems(first: 100, itemTypes: [REFERENCED_EVENT, CONNECTED_EVENT, CROSS_REFERENCED_EVENT]) {
       nodes { __typename ... on ReferencedEvent { commit { oid } }
-        ... on CrossReferencedEvent { willCloseTarget source { __typename } } } } }
+        ... on CrossReferencedEvent { source { __typename } } } } }
   ... on PullRequest { ${extra} number title url updatedAt isDraft reviewDecision mergeable repository { nameWithOwner }
     author { login } assignees(first: 10) { nodes { login } }
     reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { slug } } } }
@@ -53,7 +53,6 @@ type Login = { login: string } | null
 type TimelineNode = {
   __typename: string
   commit?: { oid: string } | null
-  willCloseTarget?: boolean
   source?: { __typename: string }
 }
 type Node = {
@@ -84,11 +83,10 @@ export type GithubResponse = {
 // `closed` holds the followed items the forge found closed or merged: they leave the followed list.
 export type SourceResult = { me: string; items: RawItem[]; errors: string[]; closed: FollowedItem[] }
 
+// A PR that only references the issue counts too: it may be one step of several, and work has started.
 const isLinkingPr = (event: TimelineNode): boolean =>
   event.__typename === 'ConnectedEvent' ||
-  (event.__typename === 'CrossReferencedEvent' &&
-    event.source?.__typename === 'PullRequest' &&
-    event.willCloseTarget === true)
+  (event.__typename === 'CrossReferencedEvent' && event.source?.__typename === 'PullRequest')
 
 const DECISION: Record<string, ReviewState['reviewDecision']> = { APPROVED: 'approved', CHANGES_REQUESTED: 'changes', REVIEW_REQUIRED: 'required' }
 
