@@ -11,6 +11,7 @@ import type { ViewName } from './filter'
 import { itemKey } from './model'
 import type { Activity, Followed, FollowedItem, Forge, Item, Page, Role, Status } from './model'
 import { refresh } from './refresh'
+import { pruneTimelog, recordTurn, startTimelog } from './timelog'
 
 const PANE = 'forge-desk'
 const TITLE = 'Forge desk'
@@ -224,8 +225,27 @@ export const register: Register = on => {
     timer = $.clock.every(REFRESH_MS, () => void reload($))
     activityTimer?.cancel()
     activityTimer = $.clock.every(ACTIVITY_MS, () => void reloadActivities($))
+    void pruneTimelog($).catch(error => $.ui.log(`forge-desk: time log sessions not pruned: ${String(error)}`, { to: 'debug' }))
 
     return next(e)
+  })
+
+  // The time log follows the main loop alone: a subagent's turns run inside one of its turns.
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      await startTimelog($, e.text).catch(error => $.ui.log(`forge-desk: time log not started: ${String(error)}`, { to: 'debug' }))
+    }
+
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    const result = await next(e)
+    if (e.agentId === undefined) {
+      await recordTurn($, e.durationMs).catch(error => $.ui.log(`forge-desk: time log not written: ${String(error)}`, { to: 'debug' }))
+    }
+
+    return result
   })
 
   // The desktop app attaches after session.start: seat the pane there if it still waits.

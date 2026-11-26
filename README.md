@@ -71,11 +71,29 @@ limit. The browser board shows the same feed on its own Activities tab.
 
 Status: under development.
 
+## Time log
+
+forge-desk records how long development sessions are active, so the time can be summed per issue
+by tools that read it (p2kit's timesheets). There is no timer: a session's active time is its
+turns, from the prompt to the end of the answer, plus the gap before the next prompt when it is
+15 minutes or less; a longer gap is idle and left out. Subagents' turns add nothing.
+
+Each turn appends one line to `~/.claude/timelog/<yyyy-mm-dd>.jsonl`, split at midnight:
+
+```json
+{"start":"2026-11-26T10:02:00+01:00","end":"2026-11-26T10:08:00+01:00","remote":"hub.genro.com/acme/app","ref":"#7","kind":"dev","source":"forge-desk"}
+```
+
+`remote` is the checkout's origin, so worktrees of one repository count together. `ref` is the
+issue or PR a session was opened on from the desk (Solve, Review, Work on it, …), when it runs in
+that item's repository; any other session has `null`. Sessions outside a repository with a remote
+are not logged. The lines are contiguous intervals: sum them, never merge them by hand.
+
 ## Development
 
 The repository root is the plugin. Data layer: `hooks/github.ts` (one `gh api graphql` call, one
 search per clause), `hooks/forgejo.ts` (REST, one search per clause, one cached timeline call
-per issue, and per PR its detail, reviews and head-commit status), `hooks/status.ts` (whose move it is), `hooks/activities.ts` (the followed repositories' feeds). Pane: `hooks/register.tsx`, filters and views in
+per issue, and per PR its detail, reviews and head-commit status), `hooks/status.ts` (whose move it is), `hooks/activities.ts` (the followed repositories' feeds), `hooks/timelog.ts` (the time log). Pane: `hooks/register.tsx`, filters and views in
 `hooks/filter.ts` (Focus, the default: assigned to me, review requests, unanswered mentions and
 followed items). A mention is unanswered while no comment of mine follows it; items there
 only for an answered mention drop out.

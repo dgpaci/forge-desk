@@ -67,6 +67,18 @@ export function getPromptTitle(prompt: string): string | undefined {
   return second?.startsWith(MARKER) ? first : undefined
 }
 
+/**
+ * The issue or PR a session link's prompt was clicked on, as `owner/repo` and its number;
+ * undefined for any other prompt.
+ */
+export function getPromptItem(prompt: string): { repo: string; number: number } | undefined {
+  const second = prompt.split('\n', 2)[1] ?? ''
+  if (!second.startsWith(MARKER)) return undefined
+  const match = /^ I clicked "[^"]*" on (?:issue|pr) ([\w.-]+\/[\w.-]+)#(\d+) /.exec(second.slice(MARKER.length))
+
+  return match ? { repo: match[1]!, number: Number(match[2]) } : undefined
+}
+
 const describe = (item: Item, action: Action): string =>
   `${MARKER} I clicked "${ACTION_LABEL[action]}" on ${item.kind} ${item.repo}#${item.number} ` +
   `"${item.title}" (${item.url}), status ${item.status}, assignees: ${item.assignees.join(', ') || 'none'}.`
